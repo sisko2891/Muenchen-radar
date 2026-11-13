@@ -69,6 +69,10 @@ select.pill{appearance:none;-webkit-appearance:none;font:600 .85rem var(--f-disp
 #weg-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 #weg-form[hidden]{display:none!important}
 #weg-form input{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);width:12rem}
+/* Dienst-Auswahl: zeigt heute (Punkt gelb = Dienst, grün = frei, grau = gesperrt), aufgeklappt die kommenden Tage */
+select.pill.dd{padding-left:25px;background-image:radial-gradient(circle,var(--dd,var(--muted)) 0 4px,transparent 4.6px),linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:9px 50%,calc(100% - 14px) 52%,calc(100% - 9px) 52%;background-size:10px 10px,5px 5px,5px 5px}
+select.pill.dd.work{--dd:var(--amber)} select.pill.dd.free{--dd:var(--ok)} select.pill.dd.closed{--dd:var(--muted)}
 select.pill.weg-ok{border-color:var(--ok)} select.pill.weg-warn{border-color:var(--warn)} select.pill.weg-bad{border-color:var(--bad);color:var(--bad)}
 /* Anzeigetafel */
 .board{background:var(--board);color:var(--board-ink);border-radius:14px;padding:14px 16px;container-type:inline-size;
@@ -462,6 +466,8 @@ input,textarea,.msg .body{-webkit-user-select:text;user-select:text}
   .board-deps{padding-right:20px}
   .board-wx{border-top:0!important;padding-top:0!important;border-left:1px solid #1f2c40;padding-left:20px}
 }
+/* iPad hochkant: Titel in Holo etwas kompakter, damit Uhr und Datum in der Zeile bleiben */
+@media (max-width:900px) and (min-width:700px){:root[data-skin="holo"] h1{font-size:1.38rem;letter-spacing:.12em}.brand{gap:8px}}
 /* schmale Spalten: Störungstitel unter die Marken, zweizeilig */
 @media (max-width:900px){
   .msg summary{grid-template-columns:auto minmax(0,1fr);row-gap:4px}
@@ -511,7 +517,7 @@ input,textarea,.msg .body{-webkit-user-select:text;user-select:text}
     <span class="pill" id="pill-rain" hidden><i></i></span>
     <a class="pill" id="pill-watch" href="#events" hidden><i></i></a>
     <button type="button" class="pill duty lock" id="pill-duty" hidden><i></i>Privat</button>
-    <select class="pill" id="duty-days" aria-label="Kommende Tage" hidden></select>
+    <select class="pill" id="duty-days" aria-label="Dienst heute und kommende Tage" hidden></select>
     <form id="weg-form" class="row" hidden>
       <input type="password" id="weg-pass" placeholder="Arbeitsweg-Passwort" autocomplete="current-password" aria-label="Arbeitsweg-Passwort">
       <button class="btn" type="submit">Speichern</button>
@@ -699,8 +705,8 @@ function dayLabel(d){const dt=new Date(d+"T12:00:00");return dt.toLocaleDateStri
 function renderDuty(){
   const pill=$("#pill-duty"), sel=$("#duty-days");
   if(!privEnc){pill.hidden=sel.hidden=true;$("#pin-form").hidden=true;return;}
-  pill.hidden=false;
-  if(!privData){pill.className="pill duty lock";pill.innerHTML="<i></i>Privat · PIN";sel.hidden=true;return;}
+  if(!privData){pill.hidden=false;pill.className="pill duty lock";pill.innerHTML="<i></i>Privat · PIN";sel.hidden=true;return;}
+  pill.hidden=true;   // freigeschaltet: Dienst und kommende Tage stecken zusammen in der Auswahl
   const today=berlinDay(), yest=berlinDay(-1);
   // laufender Nachtdienst vom Vortag
   const night=(privData.eintraege||[]).find(e=>e.d===yest&&e.ueber&&nowHM()<e.bis);
@@ -709,12 +715,17 @@ function renderDuty(){
   if(d===today&&night)txt=`Jetzt bis ${night.bis} · `+txt;
   const es=(privData.eintraege||[]).filter(e=>e.d===d);
   const state=(es.some(e=>e.von)||(d===today&&night))?"work":es.some(e=>e.gesperrt)?"closed":"free";
-  pill.className="pill duty "+state;pill.innerHTML="<i></i>"+esc(txt);
-  const days=[...new Set(privData.eintraege.map(e=>e.d))].filter(x=>x>=today).sort();
+  // Text für heute (ohne Auswahl); bei Fahrzeit steht stattdessen die Fahrzeit da
+  const es0=(privData.eintraege||[]).filter(e=>e.d===today);
+  let heute="Heute: "+dayText(today);if(night)heute=`Jetzt bis ${night.bis} · `+heute;
+  const st0=(es0.some(e=>e.von)||night)?"work":es0.some(e=>e.gesperrt)?"closed":"free";
+  sel.dataset.today=heute;sel.dataset.state=st0;
+  sel.classList.add("dd");sel.classList.remove("work","free","closed");sel.classList.add(dutyPick?state:st0);
+  const days=[...new Set(privData.eintraege.map(e=>e.d))].filter(x=>x>today).sort();
   const wegOpt=!wegUrl?"":!store.get(WEG_KEY,"")?`<option value="__weg">🚗 Fahrzeit einrichten …</option>`
     :(typeof wegStatus!=="undefined"&&wegStatus?`<option value="" disabled>${esc(wegStatus)}</option>`:"");
-  sel.innerHTML=`<option value="">${esc(sel.dataset.label||"Kommende Tage")}</option>`+days.map(x=>`<option value="${x}" ${x===dutyPick?"selected":""}>${esc(dayLabel(x))}: ${esc(dayText(x))}</option>`).join("")+wegOpt;
-  sel.hidden=days.length<1;
+  sel.innerHTML=`<option value="">${esc(sel.dataset.label||heute)}</option>`+days.map(x=>`<option value="${x}" ${x===dutyPick?"selected":""}>${esc(dayLabel(x))}: ${esc(dayText(x))}</option>`).join("")+wegOpt;
+  sel.hidden=false;
 }
 // Breite der Auswahl an den gerade gezeigten Text anpassen (sonst so breit wie die längste Zeile)
 function fitDutySel(){const sel=$("#duty-days");if(!sel||sel.hidden)return;const o=sel.options[sel.selectedIndex];if(!o)return;
@@ -1061,7 +1072,7 @@ function wegShow(){
   const w=wegText();
   sel.classList.remove("weg-ok","weg-warn","weg-bad");
   if(w){sel.dataset.label=w.t;sel.classList.add(w.c);}else delete sel.dataset.label;
-  if(sel.options[0]&&!sel.value)sel.options[0].textContent=sel.dataset.label||"Kommende Tage";
+  if(sel.options[0]&&!sel.value)sel.options[0].textContent=sel.dataset.label||sel.dataset.today||"Kommende Tage";
 }
 async function wegAbfrage(arrive,pass){
   const r=await fetch(`${wegUrl}/verkehr?ankunft=${encodeURIComponent(arrive.toISOString())}`,{headers:{"X-Castle-Pass":pass},cache:"no-store"});
