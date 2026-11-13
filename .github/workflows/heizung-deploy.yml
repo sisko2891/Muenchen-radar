@@ -1,0 +1,95 @@
+name: Heizungsdienst veröffentlichen (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+    paths: ["worker/**", ".github/workflows/heizung-deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: heizung-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Zugang prüfen (ohne Inhalte)
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.request
+          raw = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "")
+          acc = raw.strip()
+          print("Account-ID: Länge", len(acc), "| Leerzeichen/Zeilenumbruch drumherum:", raw != acc,
+                "| nur 0-9/a-f:", bool(re.fullmatch(r"[0-9a-f]{32}", acc)))
+          req = urllib.request.Request("https://api.cloudflare.com/client/v4/accounts?per_page=50",
+                                       headers={"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"].strip()})
+          try:
+              d = json.load(urllib.request.urlopen(req, timeout=30))
+              ids = [a["id"] for a in d.get("result", [])]
+              print("Token gültig | Konten für diesen Token:", len(ids), "| Account-ID passt:", acc in ids)
+          except Exception as e:
+              print("Token-Prüfung fehlgeschlagen:", e)
+          # workers.dev-Subdomain anlegen, falls noch keine existiert
+          def cf(method, path, body=None):
+              r = urllib.request.Request("https://api.cloudflare.com/client/v4/accounts/" + acc + path, method=method,
+                  data=json.dumps(body).encode() if body else None,
+                  headers={"Authorization": "Bearer " + os.environ["CLOUDFLARE_API_TOKEN"].strip(), "Content-Type": "application/json"})
+              try:
+                  return json.load(urllib.request.urlopen(r, timeout=30))
+              except urllib.error.HTTPError as e:
+                  return json.loads(e.read() or b"{}")
+          import secrets, urllib.error
+          cur = cf("GET", "/workers/subdomain")
+          if (cur.get("result") or {}).get("subdomain"):
+              print("workers.dev-Subdomain vorhanden")
+          else:
+              for name in ["katzingers-castle", "katzingers-castle-" + secrets.token_hex(2), "kc-" + secrets.token_hex(4)]:
+                  res = cf("PUT", "/workers/subdomain", {"subdomain": name})
+                  if res.get("success"):
+                      print("workers.dev-Subdomain angelegt"); break
+                  print("Subdomain-Versuch fehlgeschlagen:", [e.get("code") for e in res.get("errors", [])])
+          with open(os.environ["GITHUB_ENV"], "a") as f:
+              f.write("CF_ACC=" + acc + "\n")
+          PY
+      - name: Dienst veröffentlichen
+        id: deploy
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          export CLOUDFLARE_ACCOUNT_ID="$CF_ACC"
+          npx -y wrangler@3.114.17 deploy 2>&1 | tee deploy.log
+          URL=$(grep -oE 'https://katzingers-castle\.[a-z0-9-]+\.workers\.dev' deploy.log | head -1)
+          [ -n "$URL" ] || { echo "Keine Adresse gefunden (workers.dev-Subdomain angelegt?)"; exit 1; }
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+      - name: Heizungs-Passwort setzen
+        working-directory: worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          HEIZUNG_PASS: ${{ secrets.HEIZUNG_PASS }}
+        run: |
+          export CLOUDFLARE_ACCOUNT_ID="$CF_ACC"
+          [ ${#HEIZUNG_PASS} -ge 10 ] || { echo "HEIZUNG_PASS fehlt oder ist kürzer als 10 Zeichen"; exit 1; }
+          printf '%s' "$HEIZUNG_PASS" | npx -y wrangler@3.114.17 secret put HEIZUNG_PASS
+      - name: Adresse für die Seite speichern
+        run: |
+          echo "{\"url\":\"${{ steps.deploy.outputs.url }}\"}" > data/heizung.json
+          git config user.name "muenchen-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/heizung.json
+          if ! git diff --cached --quiet; then
+            git commit -m "Heizungsdienst: Adresse aktualisiert"
+            git pull --rebase -X theirs origin main || true
+            git push || echo "Push übersprungen"
+          fi

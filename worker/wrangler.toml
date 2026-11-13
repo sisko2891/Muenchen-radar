@@ -1,0 +1,12 @@
+name = "katzingers-castle"
+main = "index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "TADO"
+class_name = "TadoState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["TadoState"]

@@ -1,0 +1,51 @@
+{
+ "stand": "2026-11-13T22:10:33Z",
+ "quelle": "openholidays",
+ "ferien": [
+  {
+   "von": "2026-11-02",
+   "bis": "2026-11-06",
+   "name": "Herbstferien"
+  },
+  {
+   "von": "2026-11-18",
+   "bis": "2026-11-18",
+   "name": "Buß- und Bettag"
+  },
+  {
+   "von": "2026-12-24",
+   "bis": "2027-01-08",
+   "name": "Weihnachtsferien"
+  },
+  {
+   "von": "2027-02-08",
+   "bis": "2027-02-12",
+   "name": "Frühjahrsferien"
+  },
+  {
+   "von": "2027-03-22",
+   "bis": "2027-04-02",
+   "name": "Osterferien"
+  },
+  {
+   "von": "2027-05-18",
+   "bis": "2027-05-28",
+   "name": "Pfingstferien"
+  },
+  {
+   "von": "2027-08-02",
+   "bis": "2027-09-13",
+   "name": "Sommerferien"
+  },
+  {
+   "von": "2027-11-02",
+   "bis": "2027-11-05",
+   "name": "Herbstferien"
+  },
+  {
+   "von": "2027-11-17",
+   "bis": "2027-11-17",
+   "name": "Buß- und Bettag"
+  }
+ ]
+}

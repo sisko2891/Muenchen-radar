@@ -1,0 +1,1475 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Katzingers Castle</title>
+<meta name="theme-color" content="#0f1b2d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Katzingers Castle">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="apple-touch-icon" href="img/burg-icon.png">
+<link rel="icon" href="img/burg.svg">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&family=JetBrains+Mono:wght@500;700&family=Rajdhani:wght@500;600;700&family=Share+Tech+Mono&display=swap">
+<script>try{var s=JSON.parse(localStorage.getItem("skin")||"null");if(s==="holo")document.documentElement.dataset.skin=s;else localStorage.removeItem("skin");}catch(e){}</script>
+<style>
+/* Layout: Anzeigetafel oben (Abfahrten), darunter Reiter Live / Kino / Events; einspaltig, Handy zuerst */
+:root{
+  --bg:#eef1f5; --panel:#ffffff; --ink:#0f1b2d; --muted:#5b6778; --line:#d5dbe3;
+  --accent:#1f4fd1; --board:#0f1b2d; --board-ink:#f4f6fa; --amber:#f2a900;
+  --ok:#17803d; --warn:#b36b00; --bad:#c62828; --hit:#fff3c4;
+  --new-bg:#fffaf0; --new-line:#f0d9a6;
+  --f-display:"Archivo",system-ui,sans-serif; --f-mono:"JetBrains Mono",ui-monospace,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0b121d; --panel:#131d2b; --ink:#e7ecf3; --muted:#93a0b3; --line:#243246;
+  --accent:#7aa2ff; --board:#060b12; --board-ink:#f4f6fa; --amber:#ffc23d;
+  --ok:#4cc27a; --warn:#f0a43a; --bad:#ff6b6b; --hit:#3a3214; --new-bg:#1a1f24; --new-line:#4a3f22; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0b121d; --panel:#131d2b; --ink:#e7ecf3; --muted:#93a0b3; --line:#243246;
+  --accent:#7aa2ff; --board:#060b12; --board-ink:#f4f6fa; --amber:#ffc23d;
+  --ok:#4cc27a; --warn:#f0a43a; --bad:#ff6b6b; --hit:#3a3214; --new-bg:#1a1f24; --new-line:#4a3f22; color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+a.pill{text-decoration:none;color:inherit}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 var(--f-display)}
+.wrap{max-width:1140px;margin:0 auto;padding-block:12px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:14px}
+a{color:var(--accent)}
+h1{font-size:1.35rem;margin:0;font-weight:800;letter-spacing:-.01em}
+h2{font-size:1.05rem;margin:0;font-weight:800;text-wrap:balance}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px 14px;flex-wrap:wrap}
+.clock-w{display:inline-flex;align-items:baseline;gap:10px;white-space:nowrap}
+.cdate{font:600 .8rem var(--f-display);color:var(--muted);letter-spacing:.04em}
+.clock{font:700 1.1rem var(--f-mono);font-variant-numeric:tabular-nums}
+.muted{color:var(--muted);font-size:.85rem}
+/* Status-Streifen */
+.status{display:flex;gap:8px;flex-wrap:wrap}
+/* iPad hochkant: Pillen etwas kompakter, damit alles in eine Zeile passt */
+@media (max-width:900px) and (min-width:700px){.status{gap:6px}.status .pill{font-size:.8rem;gap:5px}.status .pill:not(select){padding:5px 9px}:root[data-skin="holo"] .status .pill{font-size:.84rem;letter-spacing:.02em}}
+.pill{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;font-weight:600;font-size:.85rem;border:1px solid var(--line);background:var(--panel)}
+.pill i{width:9px;height:9px;border-radius:50%;background:var(--muted)}
+.pill.ok i{background:var(--ok)} .pill.warn i{background:var(--warn)} .pill.bad i{background:var(--bad)}
+button.pill{cursor:pointer;color:inherit;font-family:inherit}
+/* Privat: Dienst-Anzeige mit PIN */
+/* Dienst-Feld wie die anderen; nur der Punkt zeigt den Status: gelb = Arbeit, grün = frei, grau = gesperrt */
+.pill.duty{cursor:pointer}
+.pill.duty.work i{background:var(--amber)}
+.pill.duty.free i{background:var(--ok)}
+.pill.duty.lock i,.pill.duty.closed i{background:var(--muted)}
+select.pill{appearance:none;-webkit-appearance:none;font:600 .85rem var(--f-display);color:var(--ink);cursor:pointer;padding-right:26px;max-width:100%;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);
+  background-position:calc(100% - 14px) 52%,calc(100% - 9px) 52%;background-size:5px 5px;background-repeat:no-repeat}
+#pin-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#pin-form input{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);width:11rem}
+#pin-form .err,#weg-form .err{color:var(--bad);font-size:.8rem;font-weight:600}
+#weg-form{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#weg-form[hidden]{display:none!important}
+#weg-form input{font:inherit;padding:5px 10px;border:1px solid var(--line);border-radius:999px;background:var(--panel);color:var(--ink);width:12rem}
+select.pill.weg-ok{border-color:var(--ok)} select.pill.weg-warn{border-color:var(--warn)} select.pill.weg-bad{border-color:var(--bad);color:var(--bad)}
+/* Anzeigetafel */
+.board{background:var(--board);color:var(--board-ink);border-radius:14px;padding:14px 16px;container-type:inline-size;
+  background-image:radial-gradient(120% 90% at 100% 0%,rgba(122,162,255,.10),transparent 60%)}
+.board-grid{display:grid;gap:12px 20px}
+.board-deps{display:grid;gap:6px;align-content:start;min-width:0}
+.board-wx{display:grid;gap:10px;align-content:start;min-width:0;border-top:1px solid #1f2c40;padding-top:12px}
+@container (min-width:580px){
+  /* gleich breite Spalten ohne Lücke: der Strich liegt genau in der Mitte */
+  .board-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:0}
+  .board-deps{padding-right:20px}
+  .board-wx{border-top:0;padding-top:0;border-left:1px solid #1f2c40;padding-left:20px}
+}
+/* Wetter in der Tafel */
+.wx-cur{display:grid;grid-template-columns:auto auto minmax(0,1fr);align-items:center;gap:4px 10px}
+.wx-wind{display:inline-flex;align-items:center;gap:6px;font:600 .78rem var(--f-display);color:var(--board-ink);white-space:nowrap}
+.wx-wind small{font-weight:400;font-size:.74rem;color:#9fb0c8}
+.wx-wind svg{width:18px;height:18px;flex:none}
+.wx-wind.gust small{color:var(--amber);font-weight:600}
+.wx-cur svg{width:46px;height:46px;filter:drop-shadow(0 2px 6px rgba(0,0,0,.35))}
+.wx-temp{font:300 2.3rem/1 var(--f-display);letter-spacing:-.02em}
+.wx-desc{font:600 .85rem/1.25 var(--f-display);color:var(--board-ink);min-width:0}
+.wx-desc small{display:block;font-weight:400;font-size:.74rem;color:#9fb0c8}
+.wx-strip{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px;background:rgba(255,255,255,.04);border-radius:10px;padding:8px 4px}
+.wx-c{display:grid;justify-items:center;gap:3px;min-width:0}
+.wx-c b{font:600 .88rem var(--f-display)}
+.wx-c .pp{font:600 .68rem var(--f-mono);color:#7cc0ff;min-height:.9rem}
+.wx-c svg{width:28px;height:28px}
+.wx-c .t{font:500 .7rem var(--f-mono);color:#9fb0c8}
+.wx-c.now .t{color:var(--amber);font-weight:700}
+.wx-days{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.wx-d{display:grid;gap:2px;background:rgba(255,255,255,.04);border-radius:10px;padding:6px 9px;min-width:0}
+.wx-d .top{display:flex;justify-content:space-between;align-items:baseline;gap:4px;min-width:0}
+.wx-d .wd{font:600 .7rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:#9fb0c8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.wx-d .top i{font:600 .66rem var(--f-mono);font-style:normal;color:#7cc0ff;white-space:nowrap}
+.wx-d .mm{display:flex;align-items:center;gap:6px;font:500 .78rem var(--f-mono);color:#9fb0c8;white-space:nowrap}
+.wx-d .mm svg{width:24px;height:24px;flex:none}
+.wx-d .mm b{font:600 .95rem var(--f-display);color:var(--board-ink)}
+.board-head{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center}
+.board h2{color:var(--amber);font:700 .82rem var(--f-mono);letter-spacing:.06em;text-transform:uppercase}
+.seg{display:inline-flex;border:1px solid #33435c;border-radius:8px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--board-ink);padding:5px 10px;font:600 .8rem var(--f-display);cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--amber);color:#111}
+.dep{display:grid;grid-template-columns:3.2rem 1fr auto;gap:10px;align-items:center;padding:7px 0;border-top:1px solid #1f2c40;font-family:var(--f-mono)}
+.dep:first-of-type{border-top:0}
+.line{display:inline-block;min-width:2.6rem;text-align:center;padding:2px 6px;border-radius:5px;font-weight:700;font-size:.85rem;background:#2e7d32;color:#fff}
+.line.SBAHN{background:#2e7d32} .line.BUS{background:#1d5f8c} .line.UBAHN{background:#0b5ea8} .line.TRAM{background:#c62828}
+/* Linienfarben der Münchner S-Bahn */
+.line.l-S1{background:#16bae7}.line.l-S2{background:#76b82a}.line.l-S3{background:#951b81}.line.l-S4{background:#e30613}
+.line.l-S6{background:#00975f}.line.l-S7{background:#943126}.line.l-S8{background:#000;color:#ffcc00}.line.l-S20{background:#f05a73}
+.dest{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--f-display);font-weight:600}
+.dest small{display:block;color:#9fb0c8;font-weight:400;white-space:normal;font-size:.75rem}
+.min{text-align:right;font-weight:700;font-size:1.05rem;font-variant-numeric:tabular-nums}
+.min small{display:block;font-size:.7rem;color:#9fb0c8;font-weight:500}
+.late{color:var(--amber)} .cxl{color:#ff8a80;text-decoration:line-through}
+/* Reiter */
+.tabs{display:flex;gap:4px;border-bottom:2px solid var(--line)}
+.tabs a{padding:8px 14px;text-decoration:none;color:var(--muted);font-weight:700;border-bottom:3px solid transparent;margin-bottom:-2px}
+.tabs a[aria-current="page"]{color:var(--ink);border-color:var(--accent)}
+section[data-view]{display:grid;gap:12px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.msg{display:grid;gap:4px;padding:10px 0;border-top:1px solid var(--line)}
+.msg:first-child{border-top:0;padding-top:0}
+.msg summary{cursor:pointer;font-weight:600;list-style:none;display:grid;grid-template-columns:auto auto minmax(0,1fr);gap:10px;align-items:center}
+.msg .mtags{display:inline-flex;gap:4px}
+.msg .mwhen{font:600 .76rem var(--f-mono);color:var(--muted);white-space:nowrap}
+.msg .mt{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.msg[open] .mt{white-space:normal}
+.msg{padding:8px 0}
+.msg summary::-webkit-details-marker{display:none}
+.msg .body{font-size:.88rem;color:var(--muted)}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--line);background:var(--panel);color:var(--ink);border-radius:999px;padding:4px 10px;font:600 .8rem var(--f-display);cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:#fff}
+.tag{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 6px;border-radius:4px;background:var(--bg);color:var(--muted)}
+.tag.now{background:var(--bad);color:#fff} .tag.new{background:var(--amber);color:#111} .tag.plan{background:var(--warn);color:#fff}
+.film{display:grid;grid-template-columns:56px 1fr;gap:12px;padding:10px 0;border-top:1px solid var(--line)}
+.film:first-child{border-top:0}
+.film img{width:56px;height:80px;object-fit:cover;border-radius:4px;background:var(--bg)}
+.times{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.times a{font:700 .82rem var(--f-mono);text-decoration:none;border:1px solid var(--line);border-radius:6px;padding:3px 7px;color:var(--ink)}
+.times a.past{opacity:.4}
+.ev{display:grid;grid-template-columns:3.4rem 1fr;gap:12px;padding:9px 0;border-top:1px solid var(--line)}
+.ev:first-child{border-top:0}
+.date{font-family:var(--f-mono);text-align:center;line-height:1.1}
+.date b{display:block;font-size:1.2rem} .date span{font-size:.7rem;color:var(--muted);text-transform:uppercase}
+.ev a{text-decoration:none;color:var(--ink);font-weight:600}
+.ev a:hover{text-decoration:underline}
+.hit{background:var(--hit);border-radius:6px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+input[type=text],input[type=password]{font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--panel);color:var(--ink);min-width:0;flex:1}
+.btn{font:600 .85rem var(--f-display);padding:7px 12px;border-radius:8px;border:1px solid var(--accent);background:var(--accent);color:#fff;cursor:pointer}
+.kw{display:inline-flex;gap:4px;align-items:center}
+.kw button{border:0;background:none;color:var(--muted);cursor:pointer;font-size:1rem;padding:0 2px}
+/* Kopfbereich: Handy gestapelt, ab Tablet S4 + Wetter links, Neu angekündigt rechts */
+.hero{display:grid;gap:14px;min-width:0;grid-template-columns:minmax(0,1fr);grid-template-areas:"left" "heat" "news" "lower"}
+.hero>.hero-left{grid-area:left}
+.hero>.hero-right{grid-area:heat;display:grid;gap:14px;align-content:start;min-width:0}
+.hero>.lower{grid-area:lower;display:grid;gap:12px;min-width:0;align-content:start}
+.hero>.kev{grid-area:news}
+.hero-left{display:grid;gap:14px;align-content:start;min-width:0}
+.kev{display:grid;gap:0;align-content:start;background:var(--new-bg);border-color:var(--new-line)}
+.kev h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:12px 0 2px;font-weight:800}
+.kev h3:first-of-type{margin-top:4px}
+.kev-item.film-n{display:grid;grid-template-columns:34px 1fr;gap:10px;align-items:center}
+.kev-item.film-n img{width:34px;height:48px;object-fit:cover;border-radius:3px;background:var(--bg)}
+.kev .empty{font-size:.85rem}
+.kev-list{display:grid;min-width:0}
+.kev-item{display:block;padding:9px 0;border-top:1px solid var(--line);text-decoration:none;color:var(--ink);font-weight:600;line-height:1.3}
+.kev-item:first-child{border-top:0}
+.kev-item:hover{color:var(--accent)}
+@media (min-width:700px){
+  body{font-size:16px}
+  .hero{grid-template-columns:minmax(0,1fr) 330px;grid-template-areas:"left heat" "lower news";align-items:start}
+  .hero>.hero-right{grid-area:heat;display:grid;gap:14px;align-content:start;min-width:0}
+  .hero>.lower{grid-area:lower}
+  .hero>.kev{grid-area:news}
+  .kev-list{max-height:70vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .dep{padding:9px 0}
+  .dep .min{font-size:1.15rem}
+  .dest{font-size:.98rem}
+}
+
+/* Nachtmodus: dunkle Abdeckung, Antippen hebt sie kurz auf */
+#night{position:fixed;inset:0;background:#000;z-index:50;display:grid;place-items:center;padding:24px;color:#5f6a7a;font-family:var(--f-display);cursor:pointer}
+#night[hidden]{display:none!important}
+.nt{display:grid;justify-items:center;gap:6px;text-align:center}
+.nt-clock{font:500 min(26vw,10rem)/1 var(--f-mono);letter-spacing:-.03em;color:#5a6474;font-variant-numeric:tabular-nums}
+.nt-date{font:600 1.05rem var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:#434d5b}
+.nt-rows{display:flex;gap:16px 44px;flex-wrap:wrap;justify-content:center;margin-top:34px}
+.nt-it{display:grid;justify-items:center;gap:3px;min-width:9rem}
+.nt-it small{font:700 .7rem var(--f-display);letter-spacing:.14em;text-transform:uppercase;color:#3c4653}
+.nt-it b{font:600 1.35rem var(--f-display);color:#626d7d;display:inline-flex;align-items:center;gap:8px}
+.nt-it span{font-size:.92rem;color:#4c5664}
+.nt-it svg{width:30px;height:30px;opacity:.45;filter:saturate(.5)}
+.nt-hint{margin-top:30px;font-size:.78rem;color:#2f3843}
+/* Heizung (tado, verschlüsselt mit Dienst-PIN) */
+.heat{display:grid;gap:10px;align-content:start}
+.heat .err{color:var(--bad);font-size:.8rem;font-weight:600}
+.heat-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(142px,1fr));gap:8px;align-items:stretch}
+.room{border:1px solid var(--line);border-radius:10px;padding:9px 11px;display:grid;gap:2px;min-width:0;position:relative;overflow:hidden;align-content:start}
+.room .rc{display:contents}
+/* ungerade Anzahl: letzter Raum über die volle Breite, Bedienung rechts daneben */
+.heat-grid .room:last-child:nth-child(odd){grid-column:1/-1;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:14px;align-content:center}
+.heat-grid .room:last-child:nth-child(odd) .rc{display:grid;grid-column:2;grid-row:1/span 4;align-content:center;gap:6px;min-width:0}
+.heat-grid .room:last-child:nth-child(odd) .rc .ctl{margin-top:0}
+.room .nm{font:700 .72rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.room .tp{font:300 1.7rem/1.1 var(--f-display);letter-spacing:-.02em}
+.room .sub{font:500 .74rem var(--f-mono);color:var(--muted)}
+.room .bar{position:absolute;left:0;bottom:0;height:3px;background:linear-gradient(90deg,#ff9a3c,#ff5a36)}
+.room.heating .tp{color:#e8622c}
+.room .badge{font:700 .66rem var(--f-display);text-transform:uppercase;letter-spacing:.05em;color:#fff;background:#3b8fd9;border-radius:4px;padding:1px 5px;justify-self:start;margin-top:3px}
+.room.off .tp{color:var(--muted)}
+.room .ctl{display:flex;gap:4px;align-items:center;margin-top:6px;flex-wrap:wrap}
+.rb{font:700 .95rem var(--f-display);min-width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--bg);color:var(--ink);cursor:pointer;padding:0 8px;touch-action:manipulation}
+.rb.sm{font-size:.7rem;min-width:0;height:24px;padding:0 6px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.rb:active{transform:scale(.96)}
+.rb[disabled]{opacity:.45}
+.room .sv{font:700 .9rem var(--f-mono);flex:1;min-width:0;text-align:center;white-space:nowrap}
+.room .ctl.tmp{flex-wrap:nowrap;justify-content:space-between;background:var(--bg);border-radius:9px;padding:2px}
+.room .ctl.tmp .rb{border:0;background:var(--panel)}
+.room.busy{opacity:.6}
+.heat-msg{font-size:.85rem;color:var(--muted)}
+.heat-msg a{font-weight:700}
+.seg2{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg2 button{border:0;background:none;font:600 .74rem var(--f-display);padding:5px 9px;color:var(--muted);cursor:pointer}
+.seg2 button[aria-pressed="true"]{background:var(--accent);color:#fff}
+/* Umschalter Heizung | Licht in der rechten Spalte */
+.rswitch{display:flex;width:100%}
+.rswitch[hidden]{display:none!important}
+.rswitch button{flex:1;font-size:.88rem;padding:8px 10px}
+.hero-right[data-show="heat"] #licht,.hero-right[data-show="licht"] #heat{display:none!important}
+/* Licht (Philips Hue über eigenen Dienst) */
+.licht{display:grid;gap:10px;align-content:start}
+.licht .err{color:var(--bad);font-size:.8rem;font-weight:600}
+.lamps{display:grid;gap:8px}
+.lamp{display:grid;grid-template-columns:40px minmax(0,1fr);gap:4px 10px;align-items:center;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.lamp .nm{font:700 .72rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lamp .nm small{font-weight:500;text-transform:none;letter-spacing:0;opacity:.8}
+.lamp-btn{grid-row:span 2;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);background:var(--bg);color:var(--muted);cursor:pointer;display:grid;place-items:center;padding:0}
+.lamp-btn svg{width:20px;height:20px}
+.lamp.on .lamp-btn{background:#ffd56b;border-color:#f2b72c;color:#5a3d00;box-shadow:0 0 14px rgba(255,200,80,.55)}
+.lamp-ctl{display:flex;gap:8px;align-items:center;min-width:0}
+.lamp-top{display:flex;gap:8px;align-items:center;justify-content:space-between;min-width:0}
+.lamp input[type=range]{flex:1;min-width:0;accent-color:#f2b72c;height:24px}
+.lamp:not(.on) input[type=range]{opacity:.45}
+.lamp select{max-width:9rem;font:600 .74rem var(--f-display);border:1px solid var(--line);border-radius:7px;background:var(--panel);color:var(--ink);padding:3px 6px}
+.lamp .pct{font:600 .74rem var(--f-mono);color:var(--muted);width:2.6rem;text-align:right}
+/* Termine (TimeTree, verschlüsselt) */
+.cal{display:grid;gap:8px;align-content:start}
+.cal .err{color:var(--bad);font-size:.8rem;font-weight:600}
+#cal-list{container-type:inline-size;min-width:0}
+.cal-days{display:grid;gap:0;grid-template-columns:minmax(0,1fr)}
+.cal-day{display:grid;grid-template-columns:4.6rem minmax(0,1fr);gap:10px;padding:8px 0;border-top:1px solid var(--line);align-content:start}
+.cal-day:first-child{border-top:0;padding-top:2px}
+.cal-day[hidden]{display:none!important}
+.cal-it .ts{display:none}
+.cal-dl{font:700 .72rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding-top:3px}
+.cal-dl b{display:block;font:700 1rem var(--f-mono);color:var(--ink);letter-spacing:0}
+.cal-day.today .cal-dl{color:var(--accent)}
+.cal-day.today{background:rgba(31,79,209,.06);background:color-mix(in srgb,var(--accent) 8%,transparent);border-radius:8px;padding-left:8px!important;padding-right:8px!important;box-shadow:inset 3px 0 0 var(--accent);padding-top:6px!important}
+.cal-items{display:grid;gap:5px;min-width:0}
+.cal-it{display:grid;grid-template-columns:10px 5.4rem minmax(0,1fr);gap:8px;align-items:baseline;font-size:.92rem}
+.cal-it i{width:9px;height:9px;border-radius:50%;background:var(--muted);align-self:center}
+.cal-it .tm{font:600 .8rem var(--f-mono);color:var(--muted);white-space:nowrap}
+.cal-it .ti{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.cal-it.duty .ti{color:var(--muted);font-weight:500}
+.cal-it.past{opacity:.45}
+.cal-it.ft i{background:#d23b3b} .cal-it.sf i{background:#2ea05a}
+.cal-it.ft .ti{color:#d23b3b} .cal-day.feiertag .cal-dl,.cal-day.feiertag .cal-dl b{color:#d23b3b}
+.hol{font:700 .6rem var(--f-display);text-transform:uppercase;letter-spacing:.06em;padding:1px 6px;border-radius:4px;background:rgba(46,160,90,.14);color:#1e8a4c;margin-left:6px;align-self:center}
+:root[data-skin="holo"] .hol{background:rgba(77,255,158,.12);color:var(--ok)}
+:root[data-skin="holo"] .cal-it.ft .ti,:root[data-skin="holo"] .cal-day.feiertag .cal-dl,:root[data-skin="holo"] .cal-day.feiertag .cal-dl b{color:#ff6b7f}
+/* ab ausreichender Breite zwei Tage nebeneinander, Strich genau in der Mitte */
+@container (min-width:400px){
+  .cal-days{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .cal-day{grid-template-columns:minmax(0,1fr);gap:5px;padding:7px 16px 8px 0}
+  .cal-day:nth-child(2n){padding:7px 0 8px 16px;border-left:1px solid var(--line)}
+  .cal-day:nth-child(2){border-top:0;padding-top:6px}
+  .cal-dl{display:flex;gap:8px;align-items:baseline;padding-top:0}
+  .cal-dl b{display:inline;font-size:.92rem}
+}
+/* schmal (iPad hochkant): nur Beginnzeit, ganztägig ohne Zeitangabe */
+@container (min-width:400px) and (max-width:619px){
+  .cal-it{grid-template-columns:10px 2.9rem minmax(0,1fr);gap:6px}
+  .cal-it .tl{display:none}
+  .cal-it .ts{display:inline}
+  .cal-it.allday .tm{display:none}
+  .cal-it.allday .ti{grid-column:2/-1}
+}
+.empty{color:var(--muted);font-size:.9rem;padding:6px 0}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+/* Design-Auswahl im Kopf */
+.brand{display:flex;align-items:center;gap:10px;flex-wrap:wrap;min-width:0}
+/* Futter & Katzenklo */
+.pet{display:inline-flex;gap:6px;align-items:center}
+.pet[hidden]{display:none}
+.petb{position:relative;display:inline-flex;align-items:center;gap:5px;height:34px;padding:0 10px 0 6px;border-radius:999px;border:1px solid var(--line);background:var(--panel);color:var(--ink);cursor:pointer;touch-action:manipulation;-webkit-tap-highlight-color:transparent;transition:border-color .3s,box-shadow .3s}
+.petb svg{width:30px;height:30px;flex:none;transition:transform .2s;margin-top:-2px}
+.petb small{font:600 .74rem var(--f-mono);color:var(--muted);white-space:nowrap}
+.petb.due{border-color:var(--warn);box-shadow:0 0 0 2px color-mix(in srgb,var(--warn) 25%,transparent)}
+.petb.due small{color:var(--warn)}
+.petb.pop{animation:petpop .55s cubic-bezier(.3,1.6,.5,1)}
+.petb.pop svg{animation:petwig .6s ease}
+.petb::after{content:"";position:absolute;inset:-2px;border-radius:inherit;border:2px solid var(--ok);opacity:0;pointer-events:none}
+.petb.pop::after{animation:petring .7s ease-out}
+@keyframes petpop{0%{transform:scale(1)}30%{transform:scale(.86)}65%{transform:scale(1.12)}100%{transform:scale(1)}}
+@keyframes petwig{0%,100%{transform:rotate(0)}25%{transform:rotate(-14deg)}50%{transform:rotate(12deg)}75%{transform:rotate(-6deg)}}
+@keyframes petring{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.6)}}
+.petfx{position:fixed;z-index:60;pointer-events:none;font-size:18px;line-height:1;animation:petfly 1s ease-out forwards}
+@keyframes petfly{0%{opacity:1;transform:translate(-50%,-50%) scale(.6)}100%{opacity:0;transform:translate(calc(-50% + var(--dx)),calc(-50% + var(--dy))) scale(1.15) rotate(var(--rot))}}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:55;background:#0f1b2d;color:#fff;padding:10px 12px 10px 16px;border-radius:12px;font:600 .9rem var(--f-display);display:flex;gap:12px;align-items:center;box-shadow:0 8px 30px rgba(0,0,0,.3)}
+.toast[hidden]{display:none}
+.toast button{font:700 .85rem var(--f-display);color:#ffc23d;background:none;border:1px solid rgba(255,194,61,.5);border-radius:8px;padding:5px 10px;cursor:pointer}
+/* verärgerter Hausherr ab 30 h */
+.grr{position:fixed;inset:0;z-index:58;display:grid;place-items:center;padding:20px;background:rgba(8,12,22,.72);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:pointer}
+.grr[hidden]{display:none}
+.grr-in{display:grid;justify-items:center;gap:6px;text-align:center;animation:grrIn .5s cubic-bezier(.3,1.5,.5,1)}
+.grr svg{width:min(52vh,440px,80vw);height:auto;animation:grrShake 2.4s ease-in-out infinite;filter:drop-shadow(0 20px 40px rgba(0,0,0,.45))}
+.grr-t{font:900 clamp(2.4rem,7vw,4.4rem)/1 "Archivo",system-ui,sans-serif;color:#ff5d5d;letter-spacing:.04em;text-transform:uppercase;text-shadow:0 4px 0 #7a1010}
+.grr-s{font:600 1.2rem "Archivo",system-ui,sans-serif;color:#fff;margin-top:4px}
+.grr-acts{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:12px}
+.grr-acts button{font:700 1.05rem "Archivo",system-ui,sans-serif;padding:12px 22px;border-radius:999px;border:0;background:#ffc23d;color:#111;cursor:pointer}
+.grr small{color:#9fb0c8;font-size:.85rem;margin-top:10px}
+@keyframes grrShake{0%,70%,100%{transform:rotate(0)}74%{transform:rotate(-4deg)}78%{transform:rotate(4deg)}82%{transform:rotate(-3deg)}86%{transform:rotate(2deg)}}
+@keyframes grrIn{from{transform:scale(.6);opacity:0}}
+:root[data-skin="holo"] .petb{border-radius:6px;background:rgba(85,230,255,.06);border-color:rgba(85,230,255,.38)}
+:root[data-skin="holo"] .petb.due{border-color:var(--warn)}
+:root[data-skin="holo"] .petb::after{border-color:var(--accent)}
+:root[data-skin="holo"] .toast{background:#06121f;border:1px solid rgba(85,230,255,.4);box-shadow:0 0 24px rgba(85,230,255,.2)}
+/* Wappen: der Hausherr mit Krone */
+.crest{position:relative;flex:none;width:48px;height:48px;margin:4px 4px 0 2px}
+.crest img{width:48px;height:48px;border-radius:50%;object-fit:cover;display:block;border:2px solid var(--panel);box-shadow:0 0 0 2px #e0a100,0 3px 10px rgba(15,27,45,.25)}
+.crest .crown{position:absolute;width:24px;height:17px;left:-6px;top:-10px;transform:rotate(-22deg);filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35))}
+:root[data-skin="holo"] .crest img{border-color:#050b16;box-shadow:0 0 0 2px var(--accent),0 0 16px rgba(85,230,255,.55)}
+:root[data-skin="holo"] .crest .crown{filter:drop-shadow(0 0 5px rgba(255,200,60,.7))}
+
+#skin{appearance:none;-webkit-appearance:none;font:600 .78rem var(--f-display);color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:4px 24px 4px 9px;cursor:pointer;
+  background-image:linear-gradient(45deg,transparent 50%,var(--muted) 50%),linear-gradient(135deg,var(--muted) 50%,transparent 50%);background-position:calc(100% - 12px) 52%,calc(100% - 8px) 52%;background-size:4px 4px;background-repeat:no-repeat}
+.room .ring{display:none}
+
+/* =========================================================
+   HOLO – schwebende Glasflächen, Leuchtkanten, Raster.
+   Eigenes, immer dunkles Design; überschreibt die Farb-Tokens.
+   ========================================================= */
+:root[data-skin="holo"]{
+  --bg:#050b16; --panel:rgba(255,255,255,.045); --ink:#d7f6ff; --muted:#7fa8bf; --line:rgba(85,230,255,.2);
+  --accent:#55e6ff; --board:transparent; --board-ink:#d7f6ff; --amber:#ffb547;
+  --ok:#4dff9e; --warn:#ffb547; --bad:#ff5d73; --hit:rgba(255,181,71,.16);
+  --new-bg:rgba(255,255,255,.045); --new-line:rgba(85,230,255,.2);
+  --f-display:"Rajdhani","Archivo",system-ui,sans-serif; --f-mono:"Share Tech Mono","JetBrains Mono",ui-monospace,monospace;
+  --glow:#55e6ff; color-scheme:dark}
+:root[data-skin="holo"] body{background:radial-gradient(120% 70% at 85% -10%,#10305a 0,transparent 55%),radial-gradient(90% 60% at -10% 105%,#2a1250 0,transparent 55%),var(--bg) fixed;font-size:16px}
+:root[data-skin="holo"] body::after{content:"";position:fixed;inset:0;pointer-events:none;z-index:0;
+  background-image:linear-gradient(rgba(85,230,255,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(85,230,255,.045) 1px,transparent 1px);background-size:32px 32px}
+:root[data-skin="holo"] .wrap{position:relative;z-index:1}
+:root[data-skin="holo"] h1{font:700 1.7rem var(--f-display);letter-spacing:.18em;text-transform:uppercase;text-shadow:0 0 18px rgba(85,230,255,.55)}
+:root[data-skin="holo"] h2{font-family:var(--f-display);font-weight:700;letter-spacing:.14em;text-transform:uppercase;font-size:.9rem;color:var(--accent)}
+:root[data-skin="holo"] .clock{font:400 1.7rem var(--f-mono);color:var(--accent);text-shadow:0 0 14px var(--glow)}
+:root[data-skin="holo"] .pill{border-radius:4px;background:rgba(85,230,255,.06);border-color:rgba(85,230,255,.38);font-family:var(--f-display);font-weight:600;letter-spacing:.04em;font-size:.92rem}
+:root[data-skin="holo"] .pill i{box-shadow:0 0 8px currentColor}
+:root[data-skin="holo"] .pill.ok i{background:var(--ok);color:var(--ok)} :root[data-skin="holo"] .pill.warn i{background:var(--warn);color:var(--warn)} :root[data-skin="holo"] .pill.bad i{background:var(--bad);color:var(--bad)}
+/* Glasflächen */
+:root[data-skin="holo"] .card,:root[data-skin="holo"] .board,:root[data-skin="holo"] .kev{
+  background:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.02));border:1px solid rgba(85,230,255,.25);border-radius:14px;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);box-shadow:0 0 0 1px rgba(255,255,255,.03) inset,0 12px 40px rgba(0,0,0,.45);position:relative}
+:root[data-skin="holo"] .card::before,:root[data-skin="holo"] .board::before,:root[data-skin="holo"] .kev::before{
+  content:"";position:absolute;top:-1px;left:18px;width:60px;height:2px;background:var(--accent);box-shadow:0 0 10px var(--accent);border-radius:2px}
+:root[data-skin="holo"] .board{background-image:linear-gradient(160deg,rgba(255,255,255,.075),rgba(255,255,255,.02))}
+:root[data-skin="holo"] .board h2{color:var(--accent);font:700 .82rem var(--f-display);letter-spacing:.2em}
+:root[data-skin="holo"] .board-wx{border-color:rgba(85,230,255,.18)!important}
+:root[data-skin="holo"] .dep{border-color:rgba(85,230,255,.12)}
+:root[data-skin="holo"] .dest{font-family:var(--f-display);font-weight:600;font-size:1.1rem}
+:root[data-skin="holo"] .min{font-family:var(--f-mono);color:#fff}
+:root[data-skin="holo"] .min.late{color:var(--amber)}
+:root[data-skin="holo"] .line.SBAHN{background:transparent;border:1px solid var(--ok);color:var(--ok);box-shadow:0 0 10px rgba(77,255,158,.25)}
+:root[data-skin="holo"] .line.l-S4{border-color:#ff3b4a;color:#ff5a66;box-shadow:0 0 10px rgba(255,59,74,.35)}
+:root[data-skin="holo"] .wx-strip{background:rgba(85,230,255,.05);border:1px solid rgba(85,230,255,.12)}
+:root[data-skin="holo"] .wx-temp{font-family:var(--f-display);font-weight:600;text-shadow:0 0 20px rgba(125,140,255,.7)}
+:root[data-skin="holo"] .wx-c.now .t{color:var(--accent)}
+/* Reiter, Knöpfe, Chips */
+:root[data-skin="holo"] .tabs{border-color:rgba(85,230,255,.18)}
+:root[data-skin="holo"] .tabs a{font-family:var(--f-display);letter-spacing:.12em;text-transform:uppercase;font-size:.9rem}
+:root[data-skin="holo"] .tabs a[aria-current="page"]{color:#fff;border-color:var(--accent);text-shadow:0 0 12px var(--glow)}
+:root[data-skin="holo"] .btn{background:rgba(85,230,255,.12);border-color:var(--accent);color:var(--accent);font-family:var(--f-display);letter-spacing:.06em}
+:root[data-skin="holo"] .chip{background:transparent;border-color:rgba(85,230,255,.35);border-radius:4px;font-family:var(--f-display)}
+:root[data-skin="holo"] .chip[aria-pressed="true"]{background:rgba(85,230,255,.18);border-color:var(--accent);color:#fff}
+:root[data-skin="holo"] .tag{background:rgba(85,230,255,.1);color:var(--accent)}
+:root[data-skin="holo"] .tag.now{background:var(--bad);color:#fff} :root[data-skin="holo"] .tag.new,:root[data-skin="holo"] .tag.plan{background:var(--amber);color:#111}
+:root[data-skin="holo"] select.pill,:root[data-skin="holo"] #skin{background-color:rgba(85,230,255,.06);border-color:rgba(85,230,255,.38);color:var(--ink)}
+:root[data-skin="holo"] input[type=text],:root[data-skin="holo"] input[type=password]{background:rgba(0,0,0,.25);border-color:rgba(85,230,255,.3);color:var(--ink)}
+:root[data-skin="holo"] .seg2{border-color:rgba(85,230,255,.35);border-radius:4px}
+:root[data-skin="holo"] .seg2 button[aria-pressed="true"]{background:rgba(85,230,255,.22);color:#fff;text-shadow:0 0 8px var(--glow)}
+/* Heizung: Ringe statt großer Zahl */
+:root[data-skin="holo"] .room{background:rgba(0,0,0,.18);border-color:rgba(85,230,255,.2);justify-items:center;text-align:center}
+:root[data-skin="holo"] .room .tp{display:none}
+:root[data-skin="holo"] .room .sub{order:3;font-size:.72rem;color:var(--muted);margin-top:-2px}
+:root[data-skin="holo"] .room .nm{order:2;color:var(--accent);letter-spacing:.15em;margin-top:2px}
+:root[data-skin="holo"] .room .badge{order:4}
+:root[data-skin="holo"] .room .ctl{order:5;justify-content:center}
+:root[data-skin="holo"] .room .ring{display:grid;place-items:center;position:relative;width:96px;height:96px;order:1}
+:root[data-skin="holo"] .room .ring svg{position:absolute;inset:0;width:96px;height:96px}
+:root[data-skin="holo"] .room .ring b{display:block;font:600 1.45rem var(--f-display);color:#fff;line-height:1}
+:root[data-skin="holo"] .room .ring small{display:block;font:500 .74rem var(--f-mono);color:var(--muted)}
+:root[data-skin="holo"] .rg-bg{fill:none;stroke:rgba(85,230,255,.15);stroke-width:6}
+:root[data-skin="holo"] .rg-arc{fill:none;stroke:var(--accent);stroke-width:6;stroke-linecap:round;filter:drop-shadow(0 0 4px rgba(85,230,255,.7))}
+:root[data-skin="holo"] .room.heating .rg-arc{stroke:#ff8a3d;filter:drop-shadow(0 0 4px rgba(255,138,61,.7))}
+:root[data-skin="holo"] .room.off .rg-arc{stroke:#557;filter:none}
+:root[data-skin="holo"] .room .bar{display:none}
+:root[data-skin="holo"] .room .ctl.tmp{background:transparent;border:1px solid rgba(85,230,255,.25);border-radius:6px}
+:root[data-skin="holo"] .rb{background:transparent;border-color:rgba(85,230,255,.4);color:var(--accent);border-radius:4px}
+:root[data-skin="holo"] .room .ctl.tmp .rb{background:transparent}
+:root[data-skin="holo"] .cal-it i,:root[data-skin="holo"] .pill.duty i{box-shadow:0 0 6px currentColor}
+:root[data-skin="holo"] #night{background:#01040a}
+:root[data-skin="holo"] .nt-clock{font-weight:400;color:rgba(85,230,255,.4);text-shadow:0 0 22px rgba(85,230,255,.14)}
+:root[data-skin="holo"] .nt-date,:root[data-skin="holo"] .nt-it small{color:rgba(85,230,255,.32)}
+:root[data-skin="holo"] .nt-it b{color:rgba(215,246,255,.45)}
+:root[data-skin="holo"] .nt-it span{color:rgba(127,168,191,.6)}
+</style>
+</head>
+<body>
+<div class="grr" id="grr" hidden><div class="grr-in"><svg viewBox="0 0 200 190" aria-hidden="true"> <g stroke="#e5383b" stroke-width="5.5" stroke-linecap="round" fill="none"><path d="M158 16v9h-9M172 16v9h9M158 41v-9h-9M172 41v-9h9"/></g> <path d="M50 96 16 54l60 14z" fill="#4a5568"/><path d="M150 96 184 54l-60 14z" fill="#4a5568"/> <path d="M48 86 30 63l30 8z" fill="#f2a1b3"/><path d="M152 86 170 63l-30 8z" fill="#f2a1b3"/> <path d="M38 118c0-44 28-66 62-66s62 22 62 66c0 34-27 54-62 54s-62-20-62-54z" fill="#4a5568"/> <path d="M100 54c-6 0-10 16-11 34-12 4-23 16-24 34 0 28 17 46 35 46s35-18 35-46c-1-18-12-30-24-34-1-18-5-34-11-34z" fill="#fff"/> <path d="M60 100q16-9 30 3-14 8-30-3z" fill="#cfe3a8"/><path d="M140 100q-16-9-30 3 14 8 30-3z" fill="#cfe3a8"/> <ellipse cx="77" cy="101.5" rx="2.6" ry="4.6" fill="#1d2633"/><ellipse cx="123" cy="101.5" rx="2.6" ry="4.6" fill="#1d2633"/> <path d="M56 84l34 12M144 84l-34 12" stroke="#1d2633" stroke-width="7" stroke-linecap="round"/> <path d="M93 116h14l-7 8z" fill="#f08aa0"/> <path d="M80 133q20-12 40 0-4 22-20 24-16-2-20-24z" fill="#3a1820"/> <ellipse cx="100" cy="149" rx="9" ry="5.5" fill="#ff7a8a"/> <path d="M86 132l5 11 4-10zM114 132l-5 11-4-10z" fill="#fff"/> <g stroke="#cbd5e1" stroke-width="2" stroke-linecap="round"><path d="M66 126 28 118M66 132 26 134M134 126l38-8M134 132l40 2"/></g></svg><div class="grr-t" id="grr-t"></div><div class="grr-s" id="grr-s"></div><div class="grr-acts" id="grr-acts"></div><small>Irgendwo antippen zum Schließen</small></div></div>
+<div class="toast" id="toast" hidden><span id="toast-t"></span><button type="button" id="toast-undo">Rückgängig</button></div>
+<div id="night" hidden aria-hidden="true"><div class="nt"><div class="nt-clock" id="nt-clock"></div><div class="nt-date" id="nt-date"></div><div class="nt-rows" id="nt-rows"></div><div class="nt-hint">Antippen für 2 Minuten volle Ansicht</div></div></div>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="g-sun" cx="40%" cy="38%" r="70%"><stop offset="0" stop-color="#FFE47A"/><stop offset="1" stop-color="#FFB21E"/></radialGradient>
+    <linearGradient id="g-moon" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FDF6D8"/><stop offset="1" stop-color="#D9CFA6"/></linearGradient>
+    <linearGradient id="g-cl" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#FFFFFF"/><stop offset="1" stop-color="#C3CBD6"/></linearGradient>
+    <linearGradient id="g-cd" x1="0" y1="0" x2=".35" y2="1"><stop offset="0" stop-color="#9AA5B4"/><stop offset="1" stop-color="#5F6978"/></linearGradient>
+    <linearGradient id="g-bolt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE45C"/><stop offset="1" stop-color="#FFAE00"/></linearGradient>
+    <path id="p-cloud" d="M19 47a10 10 0 0 1-.9-19.96A14.5 14.5 0 0 1 45.6 29.2 9 9 0 1 1 46 47Z"/>
+    <g id="p-sun"><g stroke="#FFC23A" stroke-width="3.2" stroke-linecap="round"><path d="M32 6v6M32 52v6M6 32h6M52 32h6M13.6 13.6l4.2 4.2M46.2 46.2l4.2 4.2M13.6 50.4l4.2-4.2M46.2 17.8l4.2-4.2"/></g><circle cx="32" cy="32" r="12.5" fill="url(#g-sun)"/></g>
+    <path id="p-moon" d="M40 10a19 19 0 1 0 15 30A16 16 0 0 1 40 10Z" fill="url(#g-moon)"/>
+  </defs>
+  <symbol id="i-sun" viewBox="0 0 64 64"><use href="#p-sun"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 64 64"><g transform="translate(-4 2)"><use href="#p-moon"/></g></symbol>
+  <symbol id="i-pday" viewBox="0 0 64 64"><g transform="translate(0 0) scale(.66)"><use href="#p-sun"/></g><g transform="translate(5 6)"><use href="#p-cloud" fill="url(#g-cl)"/></g></symbol>
+  <symbol id="i-pnight" viewBox="0 0 64 64"><g transform="translate(-2 -1) scale(.72)"><use href="#p-moon"/></g><g transform="translate(5 6)"><use href="#p-cloud" fill="url(#g-cl)"/></g></symbol>
+  <symbol id="i-cloud" viewBox="0 0 64 64"><g transform="translate(0 2)"><use href="#p-cloud" fill="url(#g-cl)"/></g></symbol>
+  <symbol id="i-fog" viewBox="0 0 64 64"><g transform="translate(0 -6)"><use href="#p-cloud" fill="url(#g-cl)"/></g><g stroke="#C3CBD6" stroke-width="3.2" stroke-linecap="round"><path d="M14 48h36M20 55h26"/></g></symbol>
+  <symbol id="i-drizzle" viewBox="0 0 64 64"><g transform="translate(0 -7)"><use href="#p-cloud" fill="url(#g-cd)"/></g><g stroke="#5DB4FF" stroke-width="3" stroke-linecap="round"><path d="M25 46l-2 5M39 46l-2 5"/></g></symbol>
+  <symbol id="i-rain" viewBox="0 0 64 64"><g transform="translate(0 -7)"><use href="#p-cloud" fill="url(#g-cd)"/></g><g stroke="#5DB4FF" stroke-width="3.2" stroke-linecap="round"><path d="M22 46l-3 8M32 46l-3 8M42 46l-3 8"/></g></symbol>
+  <symbol id="i-sleet" viewBox="0 0 64 64"><g transform="translate(0 -7)"><use href="#p-cloud" fill="url(#g-cd)"/></g><g stroke="#5DB4FF" stroke-width="3.2" stroke-linecap="round"><path d="M23 46l-3 8M41 46l-3 8"/></g><g stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M31 47v8M27.5 49l7 4M27.5 53l7-4"/></g></symbol>
+  <symbol id="i-snow" viewBox="0 0 64 64"><g transform="translate(0 -7)"><use href="#p-cloud" fill="url(#g-cd)"/></g><g stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round"><path d="M22 46v7M19 47.7l6 3.6M19 51.3l6-3.6M40 46v7M37 47.7l6 3.6M37 51.3l6-3.6M31 53v7M28 54.7l6 3.6M28 58.3l6-3.6"/></g></symbol>
+  <symbol id="i-thunder" viewBox="0 0 64 64"><g transform="translate(0 -7)"><use href="#p-cloud" fill="url(#g-cd)"/></g><path d="M33 39l-8 12h6l-3 10 10-14h-6l3-8Z" fill="url(#g-bolt)"/></symbol>
+</svg>
+<div class="wrap">
+  <header class="top">
+    <div class="brand"><span class="crest" title="Der Hausherr"><img src="img/burg.svg" alt="" width="48" height="48"><svg class="crown" viewBox="0 0 26 18" aria-hidden="true"><defs><linearGradient id="g-crown" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe27a"/><stop offset="1" stop-color="#e0a100"/></linearGradient></defs><path d="M2 15 1 4.5l6.2 4.6L13 1.5l5.8 7.6L25 4.5 24 15Z" fill="url(#g-crown)" stroke="#9a6b00" stroke-width="1.2" stroke-linejoin="round"/><circle cx="13" cy="10.5" r="1.7" fill="#d9363e"/><circle cx="6.5" cy="12" r="1.1" fill="#3a7bd5"/><circle cx="19.5" cy="12" r="1.1" fill="#3a7bd5"/></svg></span><h1>Katzingers Castle</h1>
+      <span class="pet" id="pet" hidden><button type="button" class="petb" data-art="futter" aria-label="Gefüttert"><svg viewBox="0 0 64 64" aria-hidden="true"><g><path d="M17 30 15 12l11 8z" fill="#4a5568"/><path d="M47 30 49 12 38 20z" fill="#4a5568"/><path d="M18.5 26 17.5 16l6 4.5z" fill="#f2a1b3"/><path d="M45.5 26 46.5 16l-6 4.5z" fill="#f2a1b3"/><path d="M12 36c0-11 9-17 20-17s20 6 20 17z" fill="#4a5568"/><path d="M32 19c-2.2 0-3.6 4-4.2 9-2.6 1.2-4.8 4-5.4 8h19.2c-.6-4-2.8-6.8-5.4-8-.6-5-2-9-4.2-9z" fill="#fff"/><ellipse cx="24.5" cy="28.5" rx="3" ry="3.4" fill="#cfe3a8"/><ellipse cx="39.5" cy="28.5" rx="3" ry="3.4" fill="#cfe3a8"/><ellipse cx="24.8" cy="28.8" rx="1.1" ry="2.4" fill="#1d2633"/><ellipse cx="39.8" cy="28.8" rx="1.1" ry="2.4" fill="#1d2633"/><path d="M30.2 32.5h3.6L32 34.6z" fill="#f08aa0"/></g><path d="M4 38h56c-2 12-13 20-28 20S6 50 4 38z" fill="#e8622c"/><rect x="3" y="35.5" width="58" height="5" rx="2.5" fill="#ff9a5a"/><path d="M14 46c3 3 8 5 14 5.5" stroke="#ffc6a6" stroke-width="2.2" fill="none" stroke-linecap="round"/></svg><small>–</small></button><button type="button" class="petb" data-art="klo" aria-label="Katzenklo gereinigt"><svg viewBox="0 0 64 64" aria-hidden="true"><g><path d="M17 30 15 12l11 8z" fill="#4a5568"/><path d="M47 30 49 12 38 20z" fill="#4a5568"/><path d="M18.5 26 17.5 16l6 4.5z" fill="#f2a1b3"/><path d="M45.5 26 46.5 16l-6 4.5z" fill="#f2a1b3"/><path d="M12 36c0-11 9-17 20-17s20 6 20 17z" fill="#4a5568"/><path d="M32 19c-2.2 0-3.6 4-4.2 9-2.6 1.2-4.8 4-5.4 8h19.2c-.6-4-2.8-6.8-5.4-8-.6-5-2-9-4.2-9z" fill="#fff"/><ellipse cx="24.5" cy="28.5" rx="3" ry="3.4" fill="#cfe3a8"/><ellipse cx="39.5" cy="28.5" rx="3" ry="3.4" fill="#cfe3a8"/><ellipse cx="24.8" cy="28.8" rx="1.1" ry="2.4" fill="#1d2633"/><ellipse cx="39.8" cy="28.8" rx="1.1" ry="2.4" fill="#1d2633"/><path d="M30.2 32.5h3.6L32 34.6z" fill="#f08aa0"/></g><path d="M5 38h54l-4 20H9z" fill="#8fa3bd"/><rect x="3" y="35.5" width="58" height="5" rx="2.5" fill="#b9c8da"/><path d="M9 48h46" stroke="#a5b6cb" stroke-width="2" stroke-linecap="round"/><g fill="#ffc23d"><path d="M55 4l1.6 4.2 4.2 1.6-4.2 1.6L55 15.6l-1.6-4.2-4.2-1.6 4.2-1.6z"/><path d="M8 6l1.1 2.9 2.9 1.1-2.9 1.1L8 14l-1.1-2.9L4 10l2.9-1.1z"/></g></svg><small>–</small></button></span>
+      <select id="skin" aria-label="Design"><option value="standard">Standard</option><option value="holo">Holo</option></select></div>
+    <span class="clock-w"><span class="cdate" id="cdate"></span><span class="clock" id="clock">--:--</span></span>
+  </header>
+
+  <div class="status" id="status">
+    <a class="pill" id="pill-stamm" href="#live"><i></i>Stammstrecke: lädt…</a>
+    <a class="pill" id="pill-s4" href="#live"><i></i>S4: lädt…</a>
+    <span class="pill" id="pill-rain" hidden><i></i></span>
+    <a class="pill" id="pill-watch" href="#events" hidden><i></i></a>
+    <button type="button" class="pill duty lock" id="pill-duty" hidden><i></i>Privat</button>
+    <select class="pill" id="duty-days" aria-label="Kommende Tage" hidden></select>
+    <form id="weg-form" class="row" hidden>
+      <input type="password" id="weg-pass" placeholder="Arbeitsweg-Passwort" autocomplete="current-password" aria-label="Arbeitsweg-Passwort">
+      <button class="btn" type="submit">Speichern</button>
+      <span class="err" id="weg-err"></span>
+    </form>
+    <form id="pin-form" hidden>
+      <input type="password" id="pin-input" placeholder="PIN" autocomplete="current-password" aria-label="PIN">
+      <button class="btn" type="submit">Öffnen</button>
+      <span class="err" id="pin-err"></span>
+    </form>
+  </div>
+
+  <div class="hero">
+    <div class="hero-left">
+      <section class="board" aria-label="Abfahrten S4 Aubing Richtung Innenstadt und Wetter">
+        <div class="board-grid">
+          <div class="board-deps">
+            <div class="board-head"><h2>Aubing · S4 → Innenstadt</h2></div>
+            <div id="deps"><div class="empty" style="color:#9fb0c8">Lade Abfahrten…</div></div>
+            <div class="muted" style="color:#9fb0c8;font-size:.75rem" id="dep-stamp"></div>
+          </div>
+          <div class="board-wx" id="wx" aria-label="Wetter Aubing"><div class="empty" style="color:#9fb0c8">Lade Wetter…</div></div>
+        </div>
+      </section>
+      <section class="card cal" id="cal" aria-label="Termine" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2>Termine</h2>
+          <span class="muted" id="cal-stamp"></span>
+        </div>
+        <form id="cal-form" class="row" hidden>
+          <input type="password" id="cal-pass" placeholder="Kalender-Passwort" autocomplete="current-password" aria-label="Kalender-Passwort">
+          <button class="btn" type="submit">Öffnen</button>
+          <span class="err" id="cal-err"></span>
+        </form>
+        <div id="cal-list"></div>
+      </section>
+    </div>
+    <div class="hero-right" data-show="heat">
+      <div class="seg2 rswitch" id="rswitch" role="tablist" aria-label="Steuerung" hidden>
+        <button type="button" data-r="heat" role="tab">Heizung</button><button type="button" data-r="licht" role="tab">Licht</button>
+      </div>
+      <section class="card heat" id="heat" aria-label="Heizung" hidden>
+          <div class="row" style="justify-content:space-between">
+            <h2>Heizung</h2>
+            <span class="row" style="gap:8px"><span class="seg2" id="heat-pres" hidden></span><span class="muted" id="heat-stamp"></span></span>
+          </div>
+          <div id="heat-msg" class="heat-msg" hidden></div>
+          <form id="heat-form" class="row" hidden>
+            <input type="password" id="heat-pin" placeholder="Heizungs-Passwort" autocomplete="current-password" aria-label="Heizungs-Passwort">
+            <button class="btn" type="submit">Öffnen</button>
+            <span class="err" id="heat-err"></span>
+          </form>
+          <div class="heat-grid" id="heat-rooms"></div>
+        </section>
+      <section class="card licht" id="licht" aria-label="Licht" hidden>
+        <div class="row" style="justify-content:space-between">
+          <h2>Licht</h2>
+          <span class="row" style="gap:8px"><button class="rb sm" type="button" id="licht-aus" hidden>Alles aus</button><span class="muted" id="licht-stamp"></span></span>
+        </div>
+        <div id="licht-msg" class="heat-msg" hidden></div>
+        <form id="licht-form" class="row" hidden>
+          <input type="password" id="licht-pass" placeholder="Licht-Passwort" autocomplete="current-password" aria-label="Licht-Passwort">
+          <button class="btn" type="submit">Öffnen</button>
+          <span class="err" id="licht-err"></span>
+        </form>
+        <div id="licht-list" class="lamps"></div>
+      </section>
+    </div>
+
+  <div class="lower">
+  <nav class="tabs" aria-label="Bereiche">
+    <a href="#live">Störungen</a>
+    <a href="#kino">Kino</a>
+    <a href="#events">Events</a>
+  </nav>
+
+  <!-- STÖRUNGEN -->
+  <section data-view="live">
+    <div class="card">
+      <div class="row" style="justify-content:space-between">
+        <h2>S4 Aubing – Marienplatz</h2>
+        <div class="chips" id="msg-filter">
+          <button class="chip" data-t="now" aria-pressed="false">Nur aktuell</button>
+        </div>
+      </div>
+      <div id="msgs" class="empty">Lade…</div>
+    </div>
+    <div class="card">
+      <h2>U-Bahn: aktuelle Störungen</h2>
+      <div id="umsgs" class="empty">Lade…</div>
+    </div>
+  </section>
+
+  <!-- KINO -->
+  <section data-view="kino" hidden>
+    <div class="chips" id="cinema-pick">
+      <button class="chip" data-c="3209" aria-pressed="true">Cineplex Germering</button>
+      <button class="chip" data-c="1081" aria-pressed="false">Mathäser</button>
+    </div>
+    <div class="chips" id="day-pick"></div>
+    <div class="card" id="films"><div class="empty">Lade Programm…</div></div>
+  </section>
+
+  <!-- EVENTS -->
+  <section data-view="events" hidden>
+    <div class="card">
+      <h2>Merkliste</h2>
+      <p class="muted" style="margin:4px 0 8px">Stichwörter wie „Harry Potter“ oder Künstlernamen. Treffer in Events und Kino werden markiert und oben angezeigt. Gespeichert nur in diesem Browser.</p>
+      <form class="row" id="kw-form">
+        <input type="text" id="kw-input" placeholder="z. B. Harry Potter" aria-label="Stichwort">
+        <button class="btn" type="submit">Hinzufügen</button>
+      </form>
+      <div class="chips" id="kw-list" style="margin-top:8px"></div>
+      <div id="kw-hits" style="margin-top:8px"></div>
+    </div>
+    <div class="chips" id="ev-filter">
+      <button class="chip" data-f="woche" aria-pressed="true">Diese Woche</button>
+      <button class="chip" data-f="konzert" aria-pressed="false">Konzerte &amp; Shows</button>
+      <button class="chip" data-f="vvk" aria-pressed="false">Neu im VVK</button>
+      <button class="chip" data-f="vvkbald" aria-pressed="false">VVK startet bald</button>
+      <button class="chip" data-f="neu" aria-pressed="false">Neu angekündigt</button>
+      <button class="chip" data-f="kino" aria-pressed="false">Kino-Events</button>
+    </div>
+    <div class="card" id="ev-list"><div class="empty">Lade Events…</div></div>
+    <p class="muted" id="ev-stamp"></p>
+  </section>
+  </div>
+  <section class="card kev" aria-label="Neu angekündigt">
+      <div class="row" style="justify-content:space-between">
+        <h2>Neu angekündigt</h2>
+        <a class="muted" href="#events">Alle Events →</a>
+      </div>
+      <div class="kev-list" id="kev"><div class="empty">Lade…</div></div>
+    </section>
+  </div>
+</div>
+
+<script>
+const MVG = "https://www.mvg.de/api/bgw-pt/v3";
+const AUBING = "de:09162:1710";
+const KINO = "https://kntkapi.apps.stroeermb.de/api/cinema/";
+const WEST = /Buchenau|Geltendorf|F[üu]rstenfeldbruck|Puchheim|Eichenau|Grafrath|T[üu]rkenfeld|Sch[öo]ngeising|Freiham|Neuaubing|Gilching|Germering/i;
+const STAMM = /Stammstrecke|Pasing und Ostbahnhof|Hauptbahnhof|Karlsplatz|Marienplatz|Isartor|Rosenheimer Platz|Hackerbr[üu]cke|Donnersbergerbr[üu]cke|Hirschgarten|Laim/i;
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtT = ms => new Date(ms).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+const fmtD = ms => new Date(ms).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",timeZone:"Europe/Berlin"});
+const store = {
+  get(k,d){try{const v=localStorage.getItem(k);return v?JSON.parse(v):d}catch{return d}},
+  set(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch{}}
+};
+async function getJSON(url){const r=await fetch(url,{cache:"no-store"});if(!r.ok)throw new Error(r.status);return r.json();}
+function setPill(el,state,text){el.className="pill "+state;el.innerHTML="<i></i>"+esc(text);}
+
+/* ---------- Design-Auswahl ---------- */
+(function(){const sel=$("#skin");sel.value=document.documentElement.dataset.skin||"standard";
+  sel.onchange=()=>{const v=sel.value;if(v==="standard")delete document.documentElement.dataset.skin;else document.documentElement.dataset.skin=v;store.set("skin",v==="standard"?null:v);};})();
+
+/* ---------- Uhr ---------- */
+function tick(){$("#cdate").textContent=new Date().toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit",timeZone:"Europe/Berlin"});$("#clock").textContent=new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});}
+tick();setInterval(tick,10000);
+
+/* ---------- Privat: Dienste (verschlüsselt, PIN) ---------- */
+const PIN_KEY="privatPin";
+let privEnc=null, privData=null, dutyPick=null, dutyPickTimer=null;
+const b64=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+async function decryptPriv(enc,pin){
+  const c=crypto.subtle;
+  const base=await c.importKey("raw",new TextEncoder().encode(pin),"PBKDF2",false,["deriveKey"]);
+  const key=await c.deriveKey({name:"PBKDF2",salt:b64(enc.salt),iterations:enc.iter,hash:"SHA-256"},base,{name:"AES-GCM",length:256},false,["decrypt"]);
+  return JSON.parse(new TextDecoder().decode(await c.decrypt({name:"AES-GCM",iv:b64(enc.iv)},key,b64(enc.ct))));
+}
+const berlinDay=(off=0)=>new Date(Date.now()+off*864e5).toLocaleDateString("sv-SE",{timeZone:"Europe/Berlin"});
+const nowHM=()=>new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Europe/Berlin"});
+function dayText(d){
+  const es=(privData?.eintraege||[]).filter(e=>e.d===d);
+  if(!es.length)return "kein Eintrag";
+  if(es.some(e=>e.gesperrt))return "gesperrt";
+  const t=es.filter(e=>e.von).map(e=>`${e.von}–${e.bis}${e.ueber?"⁺¹":""}`);
+  // Kürzel "O" aus Profahr bedeutet dienstfrei
+  const nm=e=>/^o$/i.test(e.name.trim())?"frei":e.name;
+  return t.length?t.join(" · "):([...new Set(es.map(nm).filter(Boolean))].join(" · ")||"frei");
+}
+function dayLabel(d){const dt=new Date(d+"T12:00:00");return dt.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});}
+function renderDuty(){
+  const pill=$("#pill-duty"), sel=$("#duty-days");
+  if(!privEnc){pill.hidden=sel.hidden=true;$("#pin-form").hidden=true;return;}
+  pill.hidden=false;
+  if(!privData){pill.className="pill duty lock";pill.innerHTML="<i></i>Privat · PIN";sel.hidden=true;return;}
+  const today=berlinDay(), yest=berlinDay(-1);
+  // laufender Nachtdienst vom Vortag
+  const night=(privData.eintraege||[]).find(e=>e.d===yest&&e.ueber&&nowHM()<e.bis);
+  const d=dutyPick||today;
+  let txt=(d===today?"Heute: ":dayLabel(d)+": ")+dayText(d);
+  if(d===today&&night)txt=`Jetzt bis ${night.bis} · `+txt;
+  const es=(privData.eintraege||[]).filter(e=>e.d===d);
+  const state=(es.some(e=>e.von)||(d===today&&night))?"work":es.some(e=>e.gesperrt)?"closed":"free";
+  pill.className="pill duty "+state;pill.innerHTML="<i></i>"+esc(txt);
+  const days=[...new Set(privData.eintraege.map(e=>e.d))].filter(x=>x>=today).sort();
+  const wegOpt=!wegUrl?"":!store.get(WEG_KEY,"")?`<option value="__weg">🚗 Fahrzeit einrichten …</option>`
+    :(typeof wegStatus!=="undefined"&&wegStatus?`<option value="" disabled>${esc(wegStatus)}</option>`:"");
+  sel.innerHTML=`<option value="">${esc(sel.dataset.label||"Kommende Tage")}</option>`+days.map(x=>`<option value="${x}" ${x===dutyPick?"selected":""}>${esc(dayLabel(x))}: ${esc(dayText(x))}</option>`).join("")+wegOpt;
+  sel.hidden=days.length<1;
+}
+// Breite der Auswahl an den gerade gezeigten Text anpassen (sonst so breit wie die längste Zeile)
+function fitDutySel(){const sel=$("#duty-days");if(!sel||sel.hidden)return;const o=sel.options[sel.selectedIndex];if(!o)return;
+  const m=document.createElement("span"),cs=getComputedStyle(sel);m.style.cssText=`position:absolute;visibility:hidden;white-space:nowrap;font:${cs.font};letter-spacing:${cs.letterSpacing}`;m.textContent=o.textContent;document.body.appendChild(m);
+  const w=m.getBoundingClientRect().width;m.remove();sel.style.width=Math.ceil(w+parseFloat(cs.paddingLeft)+parseFloat(cs.paddingRight)+parseFloat(cs.borderLeftWidth)*2+2)+"px";}
+new MutationObserver(fitDutySel).observe($("#duty-days"),{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:["hidden"]});
+$("#duty-days").addEventListener("change",()=>setTimeout(fitDutySel,0));
+addEventListener("load",fitDutySel);
+$("#duty-days").addEventListener("change",e=>{
+  if(e.target.value==="__weg"){e.target.value="";$("#weg-form").hidden=false;$("#weg-pass").focus();return;}
+  dutyPick=e.target.value||null;renderDuty();
+  clearTimeout(dutyPickTimer);dutyPickTimer=setTimeout(()=>{dutyPick=null;renderDuty();},60000);
+});
+$("#pill-duty").onclick=()=>{
+  if(privData){dutyPick=null;renderDuty();return;}
+  const f=$("#pin-form");f.hidden=!f.hidden;if(!f.hidden)$("#pin-input").focus();
+};
+$("#pin-form").onsubmit=async e=>{
+  e.preventDefault();const pin=$("#pin-input").value;$("#pin-err").textContent="Prüfe…";
+  try{privData=await decryptPriv(privEnc,pin);store.set(PIN_KEY,pin);if(typeof renderCal==="function")renderCal();$("#pin-form").hidden=true;$("#pin-input").value="";$("#pin-err").textContent="";renderDuty();}
+  catch{$("#pin-err").textContent="PIN falsch";}
+};
+async function loadPriv(){
+  try{privEnc=await getJSON("data/privat.enc.json");}catch{privEnc=null;renderDuty();return;}
+  const pin=store.get(PIN_KEY,null);
+  if(pin){try{privData=await decryptPriv(privEnc,pin);}catch{privData=null;}}
+  nightRefresh();
+  renderDuty();if(typeof renderCal==="function"&&calData)renderCal();
+  if(typeof loadWeg==="function")loadWeg();
+}
+loadPriv();
+
+/* ---------- Heizung (tado über eigenen Dienst, Passwort serverseitig geprüft) ---------- */
+const HEAT_KEY="heizungPass";
+let heatUrl=null, heatData=null, heatPending={}, heatLogin=null;
+const f1=v=>v==null?"–":(Math.round(v*10)/10).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
+async function heatCall(path,body){
+  const r=await fetch(heatUrl+path,{method:body?"POST":"GET",cache:"no-store",
+    headers:{"X-Castle-Pass":store.get(HEAT_KEY,""),...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(d.error||("Fehler "+r.status));e.status=r.status;e.data=d;throw e;}
+  return d;
+}
+function heatMsg(html){const m=$("#heat-msg");m.hidden=!html;m.innerHTML=html||"";}
+function heatFail(e){
+  if(e.status===401){store.set(HEAT_KEY,"");heatData=null;$("#heat-form").hidden=false;$("#heat-err").textContent=`Passwort falsch${e.data?.rest!=null?` (noch ${e.data.rest} Versuche)`:""}`;renderHeat();return;}
+  if(e.status===429&&e.data?.bis){heatMsg(`Zu viele Fehlversuche, gesperrt bis ${new Date(e.data.bis).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}.`);return;}
+  if(e.status===409){heatData=null;renderHeat();
+    const g=e.data?.grund;const why=g?` (Verbindung getrennt am ${new Date(g.at).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"})}, tado meldet: ${esc(g.why)})`:"";
+    heatMsg(`tado ist nicht verbunden${why}. <button class="btn" type="button" id="heat-connect">tado verbinden</button>`);$("#heat-connect").onclick=heatConnect;return;}
+  heatMsg(esc(e.message)+" – neuer Versuch gleich.");
+}
+async function heatConnect(){
+  try{const d=await heatCall("/login/start",{});
+    heatMsg(`1. <a href="${esc(d.link)}" target="_blank" rel="noopener">Diesen Link öffnen</a> und bei tado bestätigen (5 Minuten gültig).<br>2. Danach hierher zurück, die Verbindung wird automatisch erkannt.`);
+    clearInterval(heatLogin);const until=Date.now()+d.gueltig*1000;
+    heatLogin=setInterval(async()=>{
+      try{const p=await heatCall("/login/poll",{});
+        if(p.fertig){clearInterval(heatLogin);heatMsg("");loadHeat();}
+        else if(p.abgelaufen||Date.now()>until){clearInterval(heatLogin);heatMsg(`Zeit abgelaufen. <button class="btn" type="button" id="heat-connect">Erneut verbinden</button>`);$("#heat-connect").onclick=heatConnect;}
+      }catch(e){clearInterval(heatLogin);heatFail(e);}
+    },5000);
+  }catch(e){heatFail(e);}
+}
+function renderHeat(){
+  if(typeof applyRSwitch==="function")applyRSwitch();
+  const box=$("#heat");
+  if(!heatUrl){box.hidden=true;return;}
+  box.hidden=false;
+  const pass=store.get(HEAT_KEY,"");
+  if(!pass){$("#heat-form").hidden=false;$("#heat-pres").hidden=true;$("#heat-stamp").textContent="";$("#heat-rooms").innerHTML='<div class="empty">Die Heizung ist mit einem eigenen Passwort geschützt.</div>';return;}
+  $("#heat-form").hidden=true;
+  if(!heatData){$("#heat-rooms").innerHTML="";return;}
+  const pr=$("#heat-pres");pr.hidden=heatData.zuhause==null;
+  const mode=heatData.fixiert?(heatData.zuhause?"HOME":"AWAY"):"AUTO";
+  pr.innerHTML=[["AUTO","Auto"],["HOME","Zuhause"],["AWAY","Abwesend"]].map(([m,l])=>`<button type="button" data-p="${m}" aria-pressed="${m===mode}" title="${m==="AUTO"?(heatData.zuhause?"automatisch: zuhause":"automatisch: abwesend"):l+" fest einstellen"}">${l}</button>`).join("");
+  pr.querySelectorAll("button").forEach(b=>b.onclick=()=>heatAct("/presence",{mode:b.dataset.p}));
+  $("#heat-stamp").textContent="live · "+new Date(heatData.stand).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+  $("#heat-rooms").innerHTML=heatData.raeume.map(r=>{
+    const pend=heatPending[r.id];const soll=pend!=null?pend.t:r.soll;
+    const heating=(r.leistung||0)>0;
+    return `<div class="room ${heating?"heating":""} ${r.an||pend?"":"off"} ${pend?.busy?"busy":""}" data-z="${r.id}" title="${esc(r.name)}${heating?` · heizt mit ${Math.round(r.leistung)} %`:""}">
+      <span class="nm">${esc(r.name)}</span><span class="tp">${f1(r.ist)}°</span>
+      <div class="ring"><svg viewBox="0 0 96 96" aria-hidden="true"><circle cx="48" cy="48" r="40" class="rg-bg"/><circle cx="48" cy="48" r="40" class="rg-arc" stroke-dasharray="${(Math.min(1,Math.max(0.03,((r.ist??10)-10)/18))*251.3).toFixed(1)} 251.3" transform="rotate(-90 48 48)"/></svg><div><b>${f1(r.ist)}°</b><small>${soll!=null?"→ "+f1(soll)+"°":"aus"}</small></div></div>
+      <span class="sub">${r.feuchte!=null?Math.round(r.feuchte)+" % Feuchte":""}</span>
+      ${r.fenster?'<span class="badge">Fenster offen</span>':""}
+      <div class="rc"><div class="ctl tmp"><button class="rb" data-a="minus" aria-label="${esc(r.name)} kälter">−</button><span class="sv">${soll!=null?f1(soll)+"°":"aus"}</span><button class="rb" data-a="plus" aria-label="${esc(r.name)} wärmer">+</button></div>
+      <div class="ctl">${r.an?'<button class="rb sm" data-a="off">Aus</button>':""}${r.manuell?'<button class="rb sm" data-a="auto">Zeitplan</button>':""}</div></div>
+      ${heating?`<span class="bar" style="width:${Math.min(100,Math.max(8,r.leistung))}%"></span>`:""}</div>`;
+  }).join("");
+  $("#heat-rooms").querySelectorAll(".room").forEach(el=>{
+    const id=+el.dataset.z, r=heatData.raeume.find(x=>x.id===id);
+    el.querySelectorAll("button").forEach(b=>b.onclick=()=>{
+      const a=b.dataset.a;
+      if(a==="off")return heatAct("/off",{zone:id},id);
+      if(a==="auto")return heatAct("/auto",{zone:id},id);
+      const cur=heatPending[id]?.t??r.soll??(r.ist!=null?Math.round(r.ist*2)/2:20);
+      const t=Math.min(25,Math.max(5,cur+(a==="plus"?.5:-.5)));
+      clearTimeout(heatPending[id]?.timer);
+      heatPending[id]={t,timer:setTimeout(()=>{heatPending[id].busy=true;renderHeat();heatAct("/set",{zone:id,temp:t},id);},1200)};
+      renderHeat();
+    });
+  });
+}
+async function heatAct(path,body,zone){
+  try{heatData=await heatCall(path,body);heatMsg("");}catch(e){heatFail(e);}
+  if(zone!=null)delete heatPending[zone];
+  renderHeat();
+}
+async function loadHeat(){
+  if(!heatUrl){try{heatUrl=(await getJSON("data/heizung.json")).url||null;}catch{heatUrl=null;}}
+  if(!heatUrl||!store.get(HEAT_KEY,"")){renderHeat();return;}
+  if(Object.keys(heatPending).length)return; // während einer Eingabe nicht überschreiben
+  try{heatData=await heatCall("/status");heatMsg("");}catch(e){heatFail(e);}
+  renderHeat();
+}
+$("#heat-form").onsubmit=async e=>{
+  e.preventDefault();store.set(HEAT_KEY,$("#heat-pin").value);$("#heat-pin").value="";$("#heat-err").textContent="Prüfe…";
+  await loadHeat();if(store.get(HEAT_KEY,""))$("#heat-err").textContent="";
+};
+loadHeat();
+setInterval(()=>{if(document.hidden)return;const night=typeof isNight==="function"&&isNight()&&Date.now()>wakeUntil;if(!night||new Date().getMinutes()%5===0)loadHeat();},60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadHeat();});
+
+/* ---------- Umschalter Heizung | Licht ---------- */
+function applyRSwitch(){
+  const hr=document.querySelector(".hero-right"), sw=$("#rswitch");if(!hr||!sw)return;
+  const hasHeat=!!(typeof heatUrl!=="undefined"&&heatUrl), hasLicht=!!(typeof lichtUrl!=="undefined"&&lichtUrl);
+  let show=store.get("rechts","heat");
+  if(!hasLicht)show="heat";else if(!hasHeat)show="licht";
+  hr.dataset.show=show;
+  sw.hidden=!(hasHeat&&hasLicht);
+  sw.querySelectorAll("button").forEach(b=>b.setAttribute("aria-pressed",b.dataset.r===show));
+}
+$("#rswitch").querySelectorAll("button").forEach(b=>b.onclick=()=>{store.set("rechts",b.dataset.r);applyRSwitch();
+  if(b.dataset.r==="licht"&&typeof loadLicht==="function")loadLicht();else if(typeof loadHeat==="function")loadHeat();});
+
+/* ---------- Licht (Philips Hue, eigener Dienst und eigenes Passwort) ---------- */
+const LICHT_KEY="lichtPass";
+const LICHT_AUSBLENDEN=["badezimmer","balkon","flur"];   // Bereiche, die im Licht-Feld nicht angezeigt werden
+const LICHT_REIHENFOLGE=["küche","wohnzimmer","arbeitszimmer","schlafzimmer","wohnung"]; // weitere Bereiche danach
+let lichtUrl=null, lichtData=null, lichtBusy={}, lichtPoll=null;
+const BULB='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.7.6 1.1 1.3 1.1 2.2h5c0-.9.4-1.6 1.1-2.2A6 6 0 0 0 12 3z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+async function lichtCall(path,body){
+  const r=await fetch(lichtUrl+path,{method:body?"POST":"GET",cache:"no-store",
+    headers:{"X-Castle-Pass":store.get(LICHT_KEY,""),...(body?{"Content-Type":"application/json"}:{})},body:body?JSON.stringify(body):undefined});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok){const e=new Error(d.error||("Fehler "+r.status));e.status=r.status;e.data=d;throw e;}
+  return d;
+}
+function lichtMsg(h){const m=$("#licht-msg");m.hidden=!h;m.innerHTML=h||"";}
+function lichtFail(e){
+  if(e.status===401){store.set(LICHT_KEY,"");lichtData=null;$("#licht-err").textContent=`Passwort falsch${e.data?.rest!=null?` (noch ${e.data.rest} Versuche)`:""}`;renderLicht();return;}
+  if(e.status===429&&e.data?.bis){lichtMsg(`Zu viele Fehlversuche, gesperrt bis ${new Date(e.data.bis).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})}.`);return;}
+  if(e.status===409){lichtData=null;renderLicht();lichtMsg(`Hue ist nicht verbunden. <button class="btn" type="button" id="licht-connect">Hue verbinden</button>`);$("#licht-connect").onclick=lichtConnect;return;}
+  lichtMsg(esc(e.message));
+}
+async function lichtConnect(){
+  try{const d=await lichtCall("/login/start",{});
+    lichtMsg(`1. <a href="${esc(d.link)}" target="_blank" rel="noopener">Bei Philips Hue anmelden und zustimmen</a> (10 Minuten gültig).<br>2. Danach hierher zurück, die Verbindung wird automatisch erkannt.`);
+    clearInterval(lichtPoll);const until=Date.now()+10*60e3;
+    lichtPoll=setInterval(async()=>{
+      try{lichtData=await lichtCall("/status");clearInterval(lichtPoll);lichtMsg("");renderLicht();}
+      catch(e){if(e.status!==409){clearInterval(lichtPoll);lichtFail(e);}else if(Date.now()>until){clearInterval(lichtPoll);lichtFail(e);}}
+    },5000);
+  }catch(e){lichtFail(e);}
+}
+function renderLicht(){
+  applyRSwitch();
+  const box=$("#licht");
+  if(!lichtUrl){box.hidden=true;return;}
+  box.hidden=false;
+  const pass=store.get(LICHT_KEY,"");
+  $("#licht-form").hidden=!!pass;
+  $("#licht-aus").hidden=!lichtData;
+  if(!pass){$("#licht-list").innerHTML='<div class="empty">Das Licht ist mit einem eigenen Passwort geschützt.</div>';$("#licht-stamp").textContent="";return;}
+  if(!lichtData){$("#licht-list").innerHTML="";return;}
+  $("#licht-stamp").textContent="live · "+new Date(lichtData.stand).toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+  const rang=b=>{const i=LICHT_REIHENFOLGE.indexOf(b.name.trim().toLowerCase());return i<0?99:i;};
+  const sichtbar=lichtData.bereiche.filter(b=>!LICHT_AUSBLENDEN.includes(b.name.trim().toLowerCase()))
+    .map((b,i)=>({b,i})).sort((x,y)=>rang(x.b)-rang(y.b)||x.i-y.i).map(x=>x.b);
+  $("#licht-list").innerHTML=sichtbar.map(b=>{
+    const p=lichtBusy[b.id]||{}, an=p.an??b.an, hell=p.hell??b.hell;
+    return `<div class="lamp ${an?"on":""}" data-id="${esc(b.id)}">
+      <button class="lamp-btn" type="button" data-a="toggle" aria-pressed="${an}" aria-label="${esc(b.name)} ${an?"ausschalten":"einschalten"}">${BULB}</button>
+      <div class="lamp-top"><span class="nm">${esc(b.name)}${b.typ==="zone"?" <small>· Zone</small>":""}</span>
+        ${b.szenen.length?`<select data-a="szene" aria-label="Szene ${esc(b.name)}"><option value="">Szene …</option>${b.szenen.map(z=>`<option value="${esc(z.id)}">${esc(z.name)}</option>`).join("")}</select>`:""}</div>
+      <div class="lamp-ctl">${hell!=null?`<input type="range" min="1" max="100" value="${hell}" data-a="hell" aria-label="Helligkeit ${esc(b.name)}"><span class="pct">${an?hell+" %":"aus"}</span>`:`<span class="pct">${an?"an":"aus"}</span>`}</div></div>`;
+  }).join("")||'<div class="empty">Keine Räume oder Zonen in Hue gefunden.</div>';
+  $("#licht-list").querySelectorAll(".lamp").forEach(el=>{
+    const id=el.dataset.id, b=lichtData.bereiche.find(x=>x.id===id);
+    el.querySelector('[data-a="toggle"]').onclick=()=>lichtAct("/set",{id,an:!(lichtBusy[id]?.an??b.an)},id,{an:!(lichtBusy[id]?.an??b.an)});
+    const r=el.querySelector('[data-a="hell"]');
+    if(r){r.oninput=()=>{el.querySelector(".pct").textContent=r.value+" %";};r.onchange=()=>lichtAct("/set",{id,hell:+r.value},id,{an:true,hell:+r.value});}
+    const sz=el.querySelector('[data-a="szene"]');
+    if(sz)sz.onchange=()=>{if(sz.value)lichtAct("/szene",{id:sz.value},id,{an:true});};
+  });
+}
+async function lichtAct(path,body,id,optimistic){
+  if(id)lichtBusy[id]=optimistic||{};renderLicht();
+  try{lichtData=await lichtCall(path,body);lichtMsg("");}catch(e){lichtFail(e);}
+  if(id)delete lichtBusy[id];renderLicht();
+}
+async function loadLicht(){
+  if(!lichtUrl){try{lichtUrl=(await getJSON("data/licht.json")).url||null;}catch{lichtUrl=null;}}
+  if(!lichtUrl||!store.get(LICHT_KEY,"")){renderLicht();return;}
+  if(Object.keys(lichtBusy).length)return;
+  if(document.activeElement&&document.activeElement.closest&&document.activeElement.closest("#licht-list"))return; // nicht während der Bedienung neu zeichnen
+  try{lichtData=await lichtCall("/status");lichtMsg("");}catch(e){lichtFail(e);}
+  renderLicht();
+}
+$("#licht-form").onsubmit=async e=>{
+  e.preventDefault();store.set(LICHT_KEY,$("#licht-pass").value);$("#licht-pass").value="";$("#licht-err").textContent="Prüfe…";
+  await loadLicht();if(store.get(LICHT_KEY,""))$("#licht-err").textContent="";
+};
+$("#licht-aus").onclick=()=>lichtAct("/allesaus",{});
+loadLicht();
+setInterval(()=>{if(document.hidden)return;const night=typeof isNight==="function"&&isNight()&&Date.now()>wakeUntil;if(!night||new Date().getMinutes()%5===0)loadLicht();},60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadLicht();});
+
+/* ---------- Termine (TimeTree, eigenes Passwort) ---------- */
+const CAL_KEY="kalenderPass";
+let calEnc=null, calData=null;
+function calDayLabel(d,k){const dt=new Date(d+"T12:00:00");return {top:k===0?"Heute":k===1?"Morgen":dt.toLocaleDateString("de-DE",{weekday:"short"}),num:dt.toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"})};}
+function renderCal(){
+  const box=$("#cal");
+  if(!calEnc){box.hidden=true;return;}
+  box.hidden=false;
+  if(!calData){$("#cal-form").hidden=false;$("#cal-list").innerHTML='<div class="empty">Termine sind mit einem eigenen Passwort geschützt.</div>';$("#cal-stamp").textContent="";return;}
+  $("#cal-form").hidden=true;
+  const now=nowHM(), today=berlinDay();
+  // nur Tage, die der letzte Abruf abdeckt (ab dem Abruftag CAL_ABRUF Tage)
+  const bis=new Date(new Date(calData.stand).getTime()+(CAL_ABRUF-1)*864e5).toLocaleDateString("sv-SE",{timeZone:"Europe/Berlin"});
+  const days=[...Array(CAL_TAGE)].map((_,k)=>berlinDay(k)).filter((d,k)=>k<8||d<=bis);
+  $("#cal-list").innerHTML=`<div class="cal-days">${days.map((d,k)=>{
+    const items=calData.termine.filter(t=>t.d<=d&&(t.bis_d||t.d)>=d);
+    const duty=(privData?.eintraege||[]).filter(e=>e.d===d&&e.von);
+    // ganztägig zuerst, danach Dienste und Termine nach Uhrzeit gemischt
+    const tm=(lang,kurz)=>`<span class="tm"><span class="tl">${lang}</span><span class="ts">${kurz}</span></span>`;
+    const all=[...duty.map(e=>({k:"1"+e.von,h:`<div class="cal-it duty"><i style="background:var(--amber)"></i>${tm(esc(e.von)+"–"+esc(e.bis),esc(e.von))}<span class="ti">Dienst${e.bem?` (${esc(e.bem)})`:""}</span></div>`})),
+      ...items.map(t=>({k:t.ganztag?"0":(t.d<d?"1 ":"1"+t.von),h:`<div class="cal-it ${t.ganztag?"allday":""} ${d===today&&t.bis&&!t.ganztag&&t.bis<now&&t.bis_d===d?"past":""}"><i style="${t.farbe?`background:${esc(t.farbe)}`:""}"></i>${t.ganztag?tm("ganztägig",""):t.d<d?tm("bis "+esc(t.bis),"→"+esc(t.bis)):tm(esc(t.von)+(t.bis&&t.bis_d===t.d?"–"+esc(t.bis):""),esc(t.von))}<span class="ti">${esc(t.titel||"Termin")}</span></div>`}))];
+    const rows=all.sort((a,b)=>a.k<b.k?-1:a.k>b.k?1:0).map(x=>x.h);
+    const l=calDayLabel(d,k);
+    const ft=feiertag(d), sf=schulfrei(d), fe0=ferienAm(d), fe=fe0&&fe0!==sf?fe0:null;
+    const extra=(ft?`<div class="cal-it allday ft"><i></i>${tm("Feiertag","")}<span class="ti">${esc(ft)}</span></div>`:"")+(sf&&!ft?`<div class="cal-it allday sf"><i></i>${tm("schulfrei","")}<span class="ti">${esc(sf)}</span></div>`:"");
+    return `<div class="cal-day ${k===0?"today":""} ${ft?"feiertag":""}"><div class="cal-dl">${esc(l.top)}<b>${esc(l.num)}</b>${fe?`<span class="hol" title="${esc(fe)}">Ferien</span>`:""}</div><div class="cal-items">${extra+rows.join("")||'<span class="muted">–</span>'}</div></div>`;
+  }).join("")}</div>`;
+  $("#cal-stamp").textContent="Stand "+new Date(calData.stand).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+  fitCal();
+}
+// So viele Tage zeigen, dass der Kalender mit dem Feld rechts (Heizung/Licht) abschließt; mindestens CAL_MIN
+const CAL_TAGE=14, CAL_MIN=8, CAL_ABRUF=16;
+function fitCal(){
+  const days=[...document.querySelectorAll("#cal-list .cal-day")];if(!days.length)return;
+  const right=document.querySelector(".hero-right"), cal=$("#cal");
+  const card=[...right.querySelectorAll(":scope > .card")].find(x=>!x.hidden&&x.offsetParent);
+  right.querySelectorAll(":scope > .card").forEach(x=>{if(x.style.minHeight)x.style.minHeight="";});
+  days.forEach(x=>x.hidden=false);cal.style.minHeight="";
+  const cols=getComputedStyle(days[0].parentElement).gridTemplateColumns.split(" ").length;
+  const r=right.getBoundingClientRect(), c=cal.getBoundingClientRect();
+  let n=days.length;
+  if(r.left<c.right||!r.height){n=Math.min(n,CAL_MIN);}   // Feld steht nicht daneben (Handy)
+  else{
+    n=n-n%cols;   // nur volle Reihen
+    for(let i=n;i<days.length;i++)days[i].hidden=true;
+    while(n>CAL_MIN&&cal.getBoundingClientRect().bottom>r.bottom+2){
+      n-=cols;for(let i=n;i<n+cols;i++)days[i].hidden=true;
+    }
+  }
+  days.forEach((x,i)=>x.hidden=i>=n);
+  // bündig mit dem Feld rechts abschließen
+  if(r.left>=c.right&&r.height){const c2=cal.getBoundingClientRect();
+    if(c2.bottom<r.bottom)cal.style.minHeight=Math.round(r.bottom-c2.top)+"px";
+    else if(card&&c2.bottom>r.bottom+1){const k=card.getBoundingClientRect();card.style.minHeight=Math.round(c2.bottom-k.top)+"px";}}
+}
+addEventListener("resize",()=>{if(calData)fitCal();});
+if(window.ResizeObserver)new ResizeObserver(()=>{if(calData)fitCal();}).observe(document.querySelector(".hero-right"));
+$("#cal-form").onsubmit=async e=>{
+  e.preventDefault();const pw=$("#cal-pass").value;$("#cal-err").textContent="Prüfe…";
+  try{calData=await decryptPriv(calEnc,pw);store.set(CAL_KEY,pw);$("#cal-pass").value="";$("#cal-err").textContent="";renderCal();}
+  catch{$("#cal-err").textContent="Passwort falsch";}
+};
+async function loadCal(){
+  try{calEnc=await getJSON("data/kalender.enc.json");}catch{calEnc=null;renderCal();return;}
+  const pw=store.get(CAL_KEY,null);
+  if(pw){try{calData=await decryptPriv(calEnc,pw);}catch{calData=null;}}
+  renderCal();
+}
+loadCal();
+// Gesetzliche Feiertage Bayern (München) – selbst berechnet; Schulferien aus data/ferien.json
+const _ftCache={};
+function feiertageJahr(y){
+  if(_ftCache[y])return _ftCache[y];
+  const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h-k)%7,m=Math.floor((a+11*h+22*l)/451);
+  const om=Math.floor((h+l-7*m+114)/31), od=((h+l-7*m+114)%31)+1, ostern=Date.UTC(y,om-1,od);
+  const iso=t=>new Date(t).toISOString().slice(0,10), o=n=>iso(ostern+n*864e5), f2=(mm,dd)=>`${y}-${String(mm).padStart(2,"0")}-${String(dd).padStart(2,"0")}`;
+  const r={[f2(1,1)]:"Neujahr",[f2(1,6)]:"Heilige Drei Könige",[o(-2)]:"Karfreitag",[o(1)]:"Ostermontag",[f2(5,1)]:"Tag der Arbeit",[o(39)]:"Christi Himmelfahrt",
+    [o(50)]:"Pfingstmontag",[o(60)]:"Fronleichnam",[f2(8,15)]:"Mariä Himmelfahrt",[f2(10,3)]:"Tag der Deutschen Einheit",[f2(11,1)]:"Allerheiligen",[f2(12,25)]:"1. Weihnachtstag",[f2(12,26)]:"2. Weihnachtstag"};
+  return _ftCache[y]=r;
+}
+const feiertag=d=>feiertageJahr(+d.slice(0,4))[d]||null;
+// Buß- und Bettag: Mittwoch vor dem 23. November, in Bayern schulfrei (kein Feiertag)
+function schulfrei(d){const y=+d.slice(0,4);const t=new Date(Date.UTC(y,10,22));while(t.getUTCDay()!==3)t.setUTCDate(t.getUTCDate()-1);return d===t.toISOString().slice(0,10)?"Buß- und Bettag":null;}
+let ferien=[];
+const ferienAm=d=>(ferien.find(f=>f.von<=d&&d<=f.bis)||{}).name||null;
+getJSON("data/ferien.json").then(x=>{ferien=x.ferien||[];if(calData)renderCal();}).catch(()=>{});
+setInterval(loadCal,60*60000);
+setInterval(()=>{if(calData)renderCal();},60000);
+setInterval(loadPriv,60*60000);
+setInterval(()=>{if(privData)renderDuty();},60000);
+
+/* ---------- Arbeitsweg (eigener Dienst; Adressen nur dort als Secrets) ---------- */
+const WEG_KEY="wegPass", WEG_VORLAUF=35;      // Ankunft 35 min vor Dienstbeginn
+let wegUrl=null, wegInfo=null, wegShift=null, wegArrive=null, wegStatus="", wegChecked=false;
+function setWegStatus(t){if(t!==wegStatus){wegStatus=t;if(privData)renderDuty();}}
+const wegTag=d=>d.toLocaleString("de-DE",{weekday:"short",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+const WEG_FENSTER=60;                          // Anzeige ab 60 min vor der Ankunft bis zur Ankunft
+// Datum + Uhrzeit immer als deutsche Zeit (Europe/Berlin) deuten, unabhängig von der Gerätezeitzone
+function berlinTime(d,hm){
+  const [y,m,dd]=d.split("-").map(Number),[h,mi]=hm.split(":").map(Number),want=Date.UTC(y,m-1,dd,h,mi);
+  const fmt=new Intl.DateTimeFormat("en-US",{timeZone:"Europe/Berlin",hourCycle:"h23",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit"});
+  let t=want;
+  for(let i=0;i<2;i++){const p=fmt.formatToParts(new Date(t)),g=k=>+p.find(x=>x.type===k).value;t-=Date.UTC(g("year"),g("month")-1,g("day"),g("hour"),g("minute"))-want;}
+  return new Date(t);
+}
+function nextShift(){
+  // nächster Dienst, dessen Ankunftszeit (Beginn − WEG_VORLAUF) noch bevorsteht
+  const now=Date.now();
+  return (privData?.eintraege||[]).filter(e=>e.von).map(e=>({e,start:berlinTime(e.d,e.von)}))
+    .filter(x=>x.start.getTime()-WEG_VORLAUF*60e3>now).sort((a,b)=>a.start-b.start)[0]||null;
+}
+function wegText(){
+  if(!wegInfo||!wegShift||!wegArrive)return null;
+  const n=Date.now();
+  if(n<wegArrive.getTime()-WEG_FENSTER*60e3||n>=wegArrive.getTime())return null;
+  const los=wegInfo.los?new Date(wegInfo.los):null, now=Date.now();
+  const lt=los?los.toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"}):"";
+  const stau=wegInfo.stau>0?` (+${wegInfo.stau} Stau)`:"";
+  if(los&&now>los.getTime())return {t:`🚗 Jetzt losfahren! ${wegInfo.minuten} min${stau}`,c:"weg-bad"};
+  return {t:`🚗 ${wegInfo.minuten} min${stau} · los ${lt}`,c:wegInfo.stau>=10?"weg-warn":"weg-ok"};
+}
+function wegShow(){
+  const sel=$("#duty-days");if(!sel)return;
+  const w=wegText();
+  sel.classList.remove("weg-ok","weg-warn","weg-bad");
+  if(w){sel.dataset.label=w.t;sel.classList.add(w.c);}else delete sel.dataset.label;
+  if(sel.options[0]&&!sel.value)sel.options[0].textContent=sel.dataset.label||"Kommende Tage";
+}
+async function wegAbfrage(arrive,pass){
+  const r=await fetch(`${wegUrl}/verkehr?ankunft=${encodeURIComponent(arrive.toISOString())}`,{headers:{"X-Castle-Pass":pass},cache:"no-store"});
+  const d=await r.json().catch(()=>({}));
+  if(r.status===401){store.set(WEG_KEY,"");$("#weg-form").hidden=false;$("#weg-err").textContent="Passwort falsch";renderDuty();throw new Error("Passwort falsch");}
+  if(!r.ok)throw new Error(d.error||("Fehler "+r.status));
+  return d;
+}
+async function loadWeg(){
+  if(!wegUrl){try{wegUrl=(await getJSON("data/weg.json")).url||null;}catch{wegUrl=null;}
+    if(wegUrl&&privData)renderDuty();}
+  const pass=store.get(WEG_KEY,"");
+  if(!wegUrl||!pass||!privData){wegInfo=null;wegShow();return;}
+  const ns=nextShift();
+  if(!ns){wegInfo=null;setWegStatus("🚗 Fahrzeit: kein Dienst mit Uhrzeit in Sicht");wegShow();return;}
+  const arrive=new Date(ns.start.getTime()-WEG_VORLAUF*60e3), ab=new Date(arrive.getTime()-WEG_FENSTER*60e3);
+  const imFenster=Date.now()>=ab.getTime()&&Date.now()<arrive.getTime();
+  if(!imFenster){
+    wegInfo=null;wegShift=null;wegArrive=null;wegShow();
+    // einmal pro Seitenaufruf prüfen, ob der Dienst grundsätzlich funktioniert (Adressen, Schlüssel)
+    if(!wegChecked){wegChecked=true;try{await wegAbfrage(arrive,pass);}catch(e){setWegStatus("🚗 Fahrzeit-Fehler: "+e.message);return;}}
+    if(!wegStatus.includes("Fehler"))setWegStatus(`🚗 Fahrzeit ab ${wegTag(ab)} (Dienst ${wegTag(ns.start)})`);
+    return;
+  }
+  try{wegInfo=await wegAbfrage(arrive,pass);wegShift=ns;wegArrive=arrive;setWegStatus(`🚗 Fahrzeit aktiv bis ${wegTag(arrive)}`);}
+  catch(e){wegInfo=null;setWegStatus("🚗 Fahrzeit-Fehler: "+e.message);
+    const sel=$("#duty-days");if(sel&&!sel.value){sel.dataset.label="🚗 Fahrzeit-Fehler – Details in der Liste";sel.options[0].textContent=sel.dataset.label;sel.classList.add("weg-bad");}
+    return;}
+  wegShow();
+}
+$("#weg-form").onsubmit=async e=>{
+  e.preventDefault();store.set(WEG_KEY,$("#weg-pass").value);$("#weg-pass").value="";$("#weg-err").textContent="Prüfe…";
+  try{const r=await fetch(`${wegUrl}/check`,{headers:{"X-Castle-Pass":store.get(WEG_KEY,"")},cache:"no-store"});
+    if(r.ok){$("#weg-form").hidden=true;$("#weg-err").textContent="";renderDuty();loadWeg();}
+    else{store.set(WEG_KEY,"");$("#weg-err").textContent=r.status===429?"Gesperrt, später erneut":"Passwort falsch";}
+  }catch{$("#weg-err").textContent="Dienst nicht erreichbar";}
+};
+setInterval(wegShow,20000);                       // Wechsel auf „Jetzt losfahren“ und Ende des Fensters
+setInterval(()=>{if(!document.hidden)loadWeg();},60000); // außerhalb des Fensters ohne Abfrage
+setTimeout(loadWeg,2500);
+
+/* ---------- Wetter (Open-Meteo, Aubing) ---------- */
+let wxState=null;
+const WMO={0:"Klar",1:"Überwiegend klar",2:"Teils bewölkt",3:"Bedeckt",45:"Nebel",48:"Reifnebel",51:"Leichter Niesel",53:"Niesel",55:"Starker Niesel",56:"Gefrierender Niesel",57:"Gefrierender Niesel",61:"Leichter Regen",63:"Regen",65:"Starker Regen",66:"Eisregen",67:"Eisregen",71:"Leichter Schnee",73:"Schnee",75:"Starker Schnee",77:"Schneegriesel",80:"Regenschauer",81:"Regenschauer",82:"Heftige Schauer",85:"Schneeschauer",86:"Schneeschauer",95:"Gewitter",96:"Gewitter mit Hagel",99:"Gewitter mit Hagel"};
+function wxIcon(code,day){
+  if(code===0)return day?"sun":"moon";
+  if(code===1||code===2)return day?"pday":"pnight";
+  if(code===45||code===48)return "fog";
+  if([51,53,55].includes(code))return "drizzle";
+  if([56,57,66,67].includes(code))return "sleet";
+  if([61,63,65,80,81,82].includes(code))return "rain";
+  if([71,73,75,77,85,86].includes(code))return "snow";
+  if(code>=95)return "thunder";
+  return "cloud";
+}
+// Wind: Pfeil zeigt, wohin der Wind weht; Richtung als Herkunft (z. B. "aus SW")
+const DIRS=["N","NO","O","SO","S","SW","W","NW"];
+function windHTML(c){
+  if(c.wind_speed_10m==null)return "";
+  const dir=DIRS[Math.round(((c.wind_direction_10m%360)+360)%360/45)%8];
+  const gust=Math.round(c.wind_gusts_10m||0), strong=gust>=50;
+  return `<span class="wx-wind ${strong?"gust":""}" title="Wind aus ${dir}">
+    <svg viewBox="0 0 24 24" style="transform:rotate(${(c.wind_direction_10m+180)%360}deg)" aria-hidden="true"><path d="M12 3v18M12 3l-5 5.5M12 3l5 5.5" stroke="#9fd2ff" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>
+    <span>${Math.round(c.wind_speed_10m)} km/h <small>aus ${dir} · Böen ${gust}</small></span></span>`;
+}
+const ico=(code,day,label)=>`<svg role="img" aria-label="${esc(label||"")}"><use href="#i-${wxIcon(code,day)}"/></svg>`;
+async function loadWx(){
+  try{
+    const d=await getJSON("https://api.open-meteo.com/v1/forecast?latitude=48.156&longitude=11.413&current=temperature_2m,apparent_temperature,weather_code,is_day,precipitation,wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=temperature_2m,precipitation_probability,weather_code,is_day&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&forecast_days=4&timezone=Europe%2FBerlin");
+    if(!d.current||!d.hourly)throw new Error(d.reason||"unvollständige Antwort");
+    const h=d.hourly, c=d.current, nowH=c.time.slice(0,13);
+    const iNow=Math.max(0,h.time.findIndex(t=>t.slice(0,13)===nowH));
+    const next=h.time.map((t,i)=>i).filter(i=>h.time[i].slice(0,13)>nowH).slice(0,6);
+    const pp=v=>v>=10?`${v} %`:"";
+    const dy=d.daily;
+    const dayCols=[1,2,3].filter(i=>dy.time?.[i]).map(i=>{
+      const dt=new Date(dy.time[i]+"T12:00:00"), p=dy.precipitation_probability_max?.[i]||0;
+      const wd=i===1?"Morgen":dt.toLocaleDateString("de-DE",{weekday:"short"}).replace(".","");
+      return `<div class="wx-d"><span class="top"><span class="wd">${wd}</span>${p>=20?`<i>${p} %</i>`:""}</span><span class="mm">${ico(dy.weather_code[i],1,WMO[dy.weather_code[i]])}<b>${Math.round(dy.temperature_2m_max[i])}°</b>${Math.round(dy.temperature_2m_min[i])}°</span></div>`;});
+    const cols=[`<div class="wx-c now"><b>${Math.round(c.temperature_2m)}°</b><span class="pp">${pp(h.precipitation_probability[iNow])}</span>${ico(c.weather_code,c.is_day,WMO[c.weather_code])}<span class="t">Jetzt</span></div>`]
+      .concat(next.map(i=>`<div class="wx-c"><b>${Math.round(h.temperature_2m[i])}°</b><span class="pp">${pp(h.precipitation_probability[i])}</span>${ico(h.weather_code[i],h.is_day[i],WMO[h.weather_code[i]])}<span class="t">${h.time[i].slice(11,16)}</span></div>`));
+    $("#wx").innerHTML=`<div class="board-head"><h2>Wetter Aubing</h2>${windHTML(c)}</div>
+      <div class="wx-cur">${ico(c.weather_code,c.is_day,WMO[c.weather_code])}<span class="wx-temp">${Math.round(c.temperature_2m)}°</span>
+        <span class="wx-desc">${esc(WMO[c.weather_code]||"")}<small>gefühlt ${Math.round(c.apparent_temperature)}° · H ${Math.round(d.daily.temperature_2m_max[0])}° T ${Math.round(d.daily.temperature_2m_min[0])}°</small></span></div>
+      <div class="wx-strip">${cols.join("")}</div>
+      <div class="wx-days">${dayCols.join("")}</div>`;
+    wxState={temp:Math.round(c.temperature_2m),code:c.weather_code,day:c.is_day,morgen:dy.time[1]?{max:Math.round(dy.temperature_2m_max[1]),min:Math.round(dy.temperature_2m_min[1]),pp:dy.precipitation_probability_max?.[1]||0}:null};
+    nightRefresh();
+    const rain=h.precipitation_probability.slice(iNow,iNow+6).map((p,k)=>[p,h.time[iNow+k],h.weather_code[iNow+k]]).find(([p])=>p>=50);
+    const pr=$("#pill-rain");pr.hidden=!rain;
+    if(rain)setPill(pr,"warn",`${/^(7[1-7]|8[56])$/.test(String(rain[2]))?"Schnee":"Regen"} ${rain[1].slice(11,16)} · ${rain[0]} %`);
+  }catch(e){
+    console.warn("Wetter:",e&&e.message);
+    // alte Anzeige behalten, falls vorhanden; in 2 Minuten erneut versuchen
+    if(!$("#wx .wx-strip"))$("#wx").innerHTML=`<div class="empty" style="color:#9fb0c8">Wetter gerade nicht abrufbar, neuer Versuch läuft.</div>`;
+    clearTimeout(window._wxRetry);window._wxRetry=setTimeout(loadWx,120000);
+  }
+}
+loadWx();setInterval(()=>{if(!document.hidden)loadWx();},15*60000);
+
+/* ---------- Abfahrten ---------- */
+let deps=[];
+async function loadDeps(){
+  try{
+    deps=(await getJSON(`${MVG}/departures?globalId=${AUBING}&limit=40&transportTypes=SBAHN`)).filter(d=>d.label==="S4");
+    nightRefresh();
+    renderDeps();
+    $("#dep-stamp").textContent="Stand "+fmtT(Date.now())+" · aktualisiert alle 30 s";
+  }catch(e){$("#deps").innerHTML=`<div class="empty" style="color:#9fb0c8">Abfahrten gerade nicht abrufbar (${esc(e.message)}). Neuer Versuch in 30 s.</div>`;}
+}
+function renderDeps(){
+  const now=Date.now();
+  const list=deps.filter(d=>{
+    return !WEST.test(d.destination);
+  }).slice(0,3);
+  $("#deps").innerHTML=list.length?list.map(d=>{
+    const t=d.realtimeDepartureTime||d.plannedDepartureTime;
+    const m=Math.max(0,Math.round((t-now)/60000));
+    const delay=d.delayInMinutes>0?`<small class="late">+${d.delayInMinutes} · plan ${fmtT(d.plannedDepartureTime)}</small>`:`<small>${fmtT(t)}</small>`;
+    const info=[...(d.infos||[]).map(i=>i.message),d.sev?"Ersatzverkehr":""].filter(Boolean).join(" · ");
+    const pl=d.platform?` · Gl. ${d.platform}`:"";
+    return `<div class="dep"><span><span class="line ${d.transportType} l-${esc(d.label)}">${esc(d.label)}</span></span>
+      <span class="dest">${esc(d.destination)}<small>${esc(info)}${info?"":esc(pl.slice(3))}</small></span>
+      <span class="min ${d.cancelled?"cxl":d.delayInMinutes>0?"late":""}">${d.cancelled?"fällt aus":m===0?"jetzt":m+" min"}${d.cancelled?"":delay}</span></div>`;
+  }).join(""):`<div class="empty" style="color:#9fb0c8">Keine Abfahrten in dieser Auswahl.</div>`;
+  // S4-Pill
+  const s4=deps.filter(d=>d.label==="S4").slice(0,6);
+  if(s4.length){
+    const cx=s4.filter(d=>d.cancelled).length, late=Math.max(...s4.map(d=>d.delayInMinutes||0));
+    setPill($("#pill-s4"),cx?"bad":late>=5?"warn":"ok",cx?`S4: ${cx} Ausfall`:late>=3?`S4: bis +${late} min`:"S4: pünktlich");
+  }
+}
+loadDeps();
+let depTick=0;
+setInterval(()=>{depTick++;const night=typeof isNight==="function"&&isNight()&&Date.now()>wakeUntil;if(!document.hidden&&(!night||depTick%4===0))loadDeps();},30000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadDeps();});
+
+/* ---------- Störungen ---------- */
+let msgs=[], msgFilter={now:!!store.get("msgFilter",{}).now};
+const isS4=m=>(m.lines||[]).some(l=>l.label==="S4");
+// S4-Abschnitt Aubing–Marienplatz vs. Außenäste
+const SEG=/Aubing|Leienfelsstra|Pasing|Laim|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|Karlsplatz|Stachus|Marienplatz|Stammstrecke|Westkreuz/i;
+const OUTER=/Puchheim|Eichenau|F[üu]rstenfeldbruck|Buchenau|Sch[öo]ngeising|Grafrath|T[üu]rkenfeld|Geltendorf|Isartor|Rosenheimer Platz|Ostbahnhof|Leuchtenbergring|Berg am Laim|Trudering|Gronsdorf|Haar|Vaterstetten|Baldham|Zorneding|Eglharting|Kirchseeon|Grafing|Ebersberg/i;
+const plain=m=>m.title+" "+String(m.description||"").replace(/<[^>]+>/g," ");
+// betrifft Aubing–Marienplatz: Station im Abschnitt genannt, oder Störung ohne Ortsangabe
+const onSeg=m=>SEG.test(plain(m))||(m.type==="INCIDENT"&&!OUTER.test(plain(m)));
+const isU=m=>(m.lines||[]).some(l=>l.transportType==="UBAHN");
+const isNow=m=>{const n=Date.now();const d=m.incidentDurations?.length?m.incidentDurations:[{from:m.validFrom,to:m.validTo}];return d.some(x=>x.from<=n&&n<=(x.to||Infinity));};
+const lineSet=m=>[...new Set((m.lines||[]).map(l=>l.label))];
+const types=m=>new Set((m.lines||[]).map(l=>l.transportType));
+function stammRelevant(m){
+  if(!types(m).has("SBAHN"))return false;
+  const sLines=lineSet(m).filter(l=>/^S\d/.test(l));
+  return STAMM.test(m.title)||(sLines.length>=4&&m.type==="INCIDENT");
+}
+// kurzer Zeitraum für die einzeilige Liste, z. B. „13.–16.11.“, „bis 30.06.28“
+function kurzZeitraum(sp,now){
+  if(!sp?.from)return "";
+  const y=new Date().getFullYear(), p=ms=>{const d=new Date(ms);return {d:String(d.getDate()).padStart(2,"0"),m:String(d.getMonth()+1).padStart(2,"0"),y:d.getFullYear()};};
+  const a=p(sp.from), b=sp.to?p(sp.to):null, yy=x=>x.y!==y?String(x.y).slice(2):"";
+  const ds=x=>`${x.d}.${x.m}.${yy(x)}`;
+  if(!b)return ds(a);
+  if(now)return "bis "+ds(b);
+  if(a.d===b.d&&a.m===b.m&&a.y===b.y)return ds(a);
+  if(a.m===b.m&&a.y===b.y)return `${a.d}.–${ds(b)}`;
+  return `${ds(a)}–${ds(b)}`;
+}
+function msgHTML(m){
+  const now=isNow(m);
+  const span=(m.incidentDurations?.[0])||{from:m.validFrom,to:m.validTo};
+  const when=span.to?`${fmtD(span.from)} ${fmtT(span.from)} – ${fmtD(span.to)} ${fmtT(span.to)}`:"";
+  const links=(m.links||[]).map(l=>`<a href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.text)}</a>`).join(" · ");
+  return `<details class="msg"><summary><span class="mtags">${now?'<span class="tag now">jetzt</span>':'<span class="tag plan">geplant</span>'}${isU(m)?[...new Set(m.lines.filter(l=>l.transportType==="UBAHN").map(l=>l.label))].map(l=>`<span class="tag">${esc(l)}</span>`).join(""):stammRelevant(m)?'<span class="tag">Stamm</span>':""}</span><span class="mwhen">${esc(kurzZeitraum(span,now))}</span><span class="mt">${esc(m.title)}</span></summary>
+    <div class="body"><div class="muted">${esc(when)}</div>${m.description||""}${links?`<p>${links}</p>`:""}</div></details>`;
+}
+async function loadMsgs(){
+  try{msgs=await getJSON(`${MVG}/messages`);renderMsgs();}
+  catch(e){$("#msgs").innerHTML=$("#umsgs").innerHTML=`<div class="empty">Störungsmeldungen nicht abrufbar (${esc(e.message)}).</div>`;setPill($("#pill-stamm"),"","Stammstrecke: keine Daten");}
+}
+function sanitize(html){const t=document.createElement("template");t.innerHTML=html;t.content.querySelectorAll("script,style,iframe,img,object,embed,link").forEach(n=>n.remove());t.content.querySelectorAll("*").forEach(n=>[...n.attributes].forEach(a=>{if(a.name.startsWith("on")||(a.name==="href"&&!/^https?:/i.test(a.value)))n.removeAttribute(a.name);}));return t.innerHTML;}
+function renderMsgs(){
+  msgs.forEach(m=>{if(!m._clean){m.description=sanitize(m.description);m._clean=1;}});
+  document.querySelectorAll("#msg-filter .chip").forEach(b=>b.setAttribute("aria-pressed",!!msgFilter[b.dataset.t]));
+  // Stammstrecke
+  const seenSt=new Set();
+  const st=msgs.filter(m=>isS4(m)&&stammRelevant(m)&&!seenSt.has(m.title)&&seenSt.add(m.title));
+  const stNow=st.filter(isNow), inc=stNow.filter(m=>m.type==="INCIDENT");
+  // Dauerbaustellen (> 14 Tage am Stück) färben den Status nicht gelb
+  const short=stNow.filter(m=>{const d=(m.incidentDurations||[]).find(x=>x.from<=Date.now()&&Date.now()<=x.to);return d&&d.to-d.from<14*864e5;});
+  setPill($("#pill-stamm"),inc.length?"bad":short.length?"warn":"ok",inc.length?"Stammstrecke: Störung":short.length?"Stammstrecke: Einschränkung":"Stammstrecke: läuft");
+  // Liste
+  const seen=new Set();
+  const list=msgs.filter(m=>{
+    const key=m.title;if(seen.has(key))return false;seen.add(key);
+    if(!isS4(m)||!onSeg(m))return false;
+    if(msgFilter.now&&!isNow(m))return false;
+    return true;
+  });
+  const st0=m=>(m.incidentDurations?.[0]?.from)||m.validFrom;
+  list.sort((a,b)=>(isNow(b)-isNow(a))||(st0(a)-st0(b)));
+  $("#msgs").className="";
+  $("#msgs").innerHTML=list.length?`<p class="muted" style="margin:0 0 6px">${list.length} Meldungen zwischen Aubing und Marienplatz · antippen für Details</p>`+list.map(msgHTML).join(""):'<div class="empty">Keine Meldungen zwischen Aubing und Marienplatz.</div>';
+  // U-Bahn: nur laufende Störungen (Liveticker), keine geplanten Baustellen
+  const useen=new Set();
+  const ul=msgs.filter(m=>isU(m)&&m.type==="INCIDENT"&&isNow(m)&&!useen.has(m.title)&&useen.add(m.title))
+    .sort((a,b)=>b.publication-a.publication);
+  $("#umsgs").className="";
+  $("#umsgs").innerHTML=ul.length?ul.map(msgHTML).join(""):'<div class="empty">Keine aktuellen U-Bahn-Störungen.</div>';
+}
+document.querySelectorAll("#msg-filter .chip").forEach(b=>b.onclick=()=>{msgFilter[b.dataset.t]=!msgFilter[b.dataset.t];store.set("msgFilter",msgFilter);renderMsgs();});
+loadMsgs();setInterval(()=>{if(!document.hidden)loadMsgs();},120000);
+
+/* ---------- Merkliste ---------- */
+let keywords=store.get("keywords",["Harry Potter"]);
+const kwRe=()=>keywords.length?new RegExp(keywords.map(k=>k.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")).join("|"),"i"):null;
+function renderKw(){
+  $("#kw-list").innerHTML=keywords.map((k,i)=>`<span class="chip kw" aria-pressed="true">${esc(k)}<button type="button" data-i="${i}" aria-label="${esc(k)} entfernen">×</button></span>`).join("")||'<span class="empty">Noch keine Stichwörter.</span>';
+  $("#kw-list").querySelectorAll("button").forEach(b=>b.onclick=()=>{keywords.splice(+b.dataset.i,1);store.set("keywords",keywords);renderKw();renderEvents();renderFilms();});
+  renderHits();
+}
+$("#kw-form").onsubmit=e=>{e.preventDefault();const v=$("#kw-input").value.trim();if(v&&!keywords.includes(v)){keywords.push(v);store.set("keywords",keywords);}$("#kw-input").value="";renderKw();renderEvents();renderFilms();};
+function renderHits(){
+  const re=kwRe();const hits=[];
+  if(re){
+    events.filter(e=>re.test(e.title)).forEach(e=>hits.push(`<div class="ev hit">${evDate(e)}<div><a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a><div class="muted">${esc(e.location)} · ${esc(e.source)}</div></div></div>`));
+    Object.entries(cinemaCache).forEach(([id,c])=>c.movies.filter(m=>re.test(m.title)).forEach(m=>hits.push(`<div class="ev hit"><div class="date"><b>🎬</b></div><div><a href="#kino">${esc(m.title)}</a><div class="muted">${esc(c.name)}</div></div></div>`)));
+  }
+  $("#kw-hits").innerHTML=hits.length?hits.join(""):(re?'<div class="empty">Aktuell keine Treffer. Die Liste wird mehrmals täglich aktualisiert.</div>':"");
+  const p=$("#pill-watch");p.hidden=!hits.length;if(hits.length)setPill(p,"warn",`Merkliste: ${hits.length} Treffer`);
+}
+
+/* ---------- Events ---------- */
+let events=[], evFilter=store.get("evFilter","woche");
+const MON=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
+function evDate(e){if(!e.start)return '<div class="date"><span>offen</span></div>';const [y,m,d]=e.start.split("-");return `<div class="date"><b>${d}</b><span>${MON[+m-1]} ${y.slice(2)}</span></div>`;}
+let baseSeen=0;
+// Vorverkauf: Zeitpunkt (Europe/Berlin, ohne Zone aus Ticketmaster als UTC geliefert)
+const presaleTs=e=>e.presale?Date.parse(e.presale+(e.presale.length===16?":00Z":"")):NaN;
+function presaleTxt(e){const t=presaleTs(e);if(isNaN(t))return "";return t>Date.now()?"VVK ab "+new Date(t).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"}):"";}
+const isNew=e=>Date.parse(e.firstSeen)>baseSeen+864e5&&Date.now()-Date.parse(e.firstSeen)<14*864e5;
+async function loadEvents(){
+  try{const d=await getJSON("data/events.json");events=d.events;baseSeen=Math.min(...events.map(e=>Date.parse(e.firstSeen)));
+    const s=Object.entries(d.sources).map(([k,v])=>`${k} ${v.ok?"✓":"✗"}`).join(" · ");
+    $("#ev-stamp").textContent=`Stand ${new Date(d.updated).toLocaleString("de-DE",{timeZone:"Europe/Berlin"})} · ${s}`;
+    renderEvents();renderHits();renderKev();
+  }catch(e){if(!events.length){$("#ev-list").innerHTML=`<div class="empty">Events nicht geladen (${esc(e.message)}).</div>`;}}
+}
+function renderEvents(){
+  renderKev();
+  document.querySelectorAll("#ev-filter .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.f===evFilter));
+  const re=kwRe();
+  const firstRun=!events.some(isNew);
+  let list=evFilter==="vvkbald"
+    ? events.filter(e=>presaleTs(e)>Date.now()).sort((a,b)=>presaleTs(a)-presaleTs(b))
+    : events.filter(e=>evFilter==="neu"?isNew(e):e.tag.split(",").includes(evFilter));
+  $("#ev-list").innerHTML=list.length?list.map(e=>`<div class="ev ${re&&re.test(e.title)?"hit":""}">${evDate(e)}<div style="min-width:0">
+    <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> ${isNew(e)?'<span class="tag new">neu</span>':""}${e.cancelled?' <span class="tag now">abgesagt</span>':""}${presaleTxt(e)?` <span class="tag plan">${esc(presaleTxt(e))}</span>`:""}
+    <div class="muted">${esc([e.when,e.location].filter(Boolean).join(" · "))}${e.end&&e.end!==e.start?` · bis ${esc(e.end.split("-").reverse().join("."))}`:""} · ${esc(e.source)}</div></div></div>`).join("")
+    :`<div class="empty">${evFilter==="neu"?"Keine neu angekündigten Events in den letzten 14 Tagen.":evFilter==="vvkbald"?"Kein bekannter VVK-Start in nächster Zeit (Quelle: Ticketmaster).":"Keine Einträge."}</div>`;
+}
+document.querySelectorAll("#ev-filter .chip").forEach(b=>b.onclick=()=>{evFilter=b.dataset.f;store.set("evFilter",evFilter);renderEvents();});
+
+function renderKev(){
+  const re=kwRe(), hit=t=>re&&re.test(t)?"hit":"";
+  // Konzerte: erst seit dem letzten Abgleich neu aufgetauchte (inkl. Neu im VVK)
+  const conc=events.filter(e=>isNew(e)&&/konzert|vvk|show/.test(e.tag)).sort((a,b)=>Date.parse(b.firstSeen)-Date.parse(a.firstSeen)).slice(0,8);
+  // Filme: Kinostart in den letzten 7 Tagen oder demnächst, aus beiden Kinos
+  const now=Date.now(), films={};
+  Object.values(cinemaCache).forEach(c=>c.movies.forEach(m=>{
+    const r=Date.parse(m.release_date);
+    if(!(r>now-7*864e5&&r<now+21*864e5))return;
+    (films[m.id]??={m,where:new Set()}).where.add(c.name.replace(/ Filmpalast| Germering/,""));
+  }));
+  const fl=Object.values(films).sort((a,b)=>Date.parse(b.m.release_date)-Date.parse(a.m.release_date)).slice(0,6);
+  const fdate=iso=>{const r=Date.parse(iso);return r>now?"Start "+new Date(r).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit"}):"seit "+new Date(r).toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});};
+  const loaded=Object.keys(cinemaCache).length;
+  $("#kev").innerHTML=`<h3>Konzerte</h3>`+(conc.length?conc.map(e=>`<a class="kev-item ${hit(e.title)}" href="${esc(e.url)}" target="_blank" rel="noopener"><span class="tag new">neu</span> ${esc(e.title)}<div class="muted" style="font-weight:400">${esc([e.start?e.start.split("-").reverse().join("."):"",e.location,presaleTxt(e)].filter(Boolean).join(" · "))}</div></a>`).join("")
+      :`<div class="empty">Seit dem letzten Abgleich nichts Neues. Neue Ankündigungen erscheinen hier 14 Tage lang.</div>`)
+    +`<h3>Neu im Kino</h3>`+(fl.length?fl.map(({m,where})=>`<a class="kev-item film-n ${hit(m.title)}" href="#kino">${m.media?.poster_url?`<img src="${esc(m.media.poster_url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`:"<span></span>"}<span style="min-width:0">${esc(m.title)}<div class="muted" style="font-weight:400">${esc(fdate(m.release_date))} · ${esc([...where].join(", "))}</div></span></a>`).join("")
+      :`<div class="empty">${loaded?"Keine neuen Filmstarts.":"Lade Kinoprogramm…"}</div>`);
+}
+
+/* ---------- Kino ---------- */
+let cinema=store.get("cinema","3209"), day=null; const cinemaCache={};
+function dayKey(iso){return new Date(iso).toLocaleDateString("sv-SE",{timeZone:"Europe/Berlin"});}
+async function loadCinema(id){
+  if(!cinemaCache[id]){
+    $("#films").innerHTML='<div class="empty">Lade Programm…</div>';
+    try{cinemaCache[id]=await getJSON(KINO+id+"/");}
+    catch(e){$("#films").innerHTML=`<div class="empty">Programm nicht abrufbar (${esc(e.message)}).</div>`;return;}
+  }
+  renderFilms();renderHits();
+}
+function renderFilms(){
+  document.querySelectorAll("#cinema-pick .chip").forEach(b=>b.setAttribute("aria-pressed",b.dataset.c===cinema));
+  const c=cinemaCache[cinema];if(!c)return;
+  const days=[...new Set(c.showtimes.map(s=>dayKey(s.showtime)))].sort().slice(0,8);
+  if(!days.includes(day))day=days[0];
+  const today=dayKey(new Date().toISOString());
+  $("#day-pick").innerHTML=days.map(d=>{const dt=new Date(d+"T12:00:00");const lbl=d===today?"Heute":dt.toLocaleDateString("de-DE",{weekday:"short",day:"2-digit",month:"2-digit"});return `<button class="chip" data-d="${d}" aria-pressed="${d===day}">${lbl}</button>`;}).join("");
+  $("#day-pick").querySelectorAll(".chip").forEach(b=>b.onclick=()=>{day=b.dataset.d;renderFilms();});
+  const movies=Object.fromEntries(c.movies.map(m=>[m.id,m]));
+  const by={};c.showtimes.filter(s=>dayKey(s.showtime)===day).forEach(s=>(by[s.movie.id]??=[]).push(s));
+  const re=kwRe();const now=Date.now();
+  const rows=Object.entries(by).map(([id,st])=>({m:movies[id]||{title:"Unbekannter Film"},st:st.sort((a,b)=>a.showtime.localeCompare(b.showtime))}))
+    .sort((a,b)=>a.m.title.localeCompare(b.m.title,"de"));
+  $("#films").innerHTML=rows.length?rows.map(({m,st})=>`<div class="film ${re&&re.test(m.title)?"hit":""}">
+    ${m.media?.poster_url?`<img src="${esc(m.media.poster_url)}" alt="" loading="lazy" onerror="this.style.visibility='hidden'">`:"<span></span>"}
+    <div style="min-width:0"><strong>${esc(m.title)}</strong>
+      <div class="muted">${esc([m.genres?.names?.join(", "),m.duration?m.duration+" min":"",m.fsk!=null?"FSK "+m.fsk:""].filter(Boolean).join(" · "))}</div>
+      <div class="times">${st.map(s=>`<a class="${Date.parse(s.showtime)<now?"past":""}" href="${esc(s.ticket_purchase_url)}" target="_blank" rel="noopener" title="${esc((s.version||[]).join(", "))}">${fmtT(Date.parse(s.showtime))}${(s.version||[]).length?" "+esc(s.version.join("/")):""}</a>`).join("")}</div>
+    </div></div>`).join(""):'<div class="empty">Keine Vorstellungen an diesem Tag.</div>';
+}
+document.querySelectorAll("#cinema-pick .chip").forEach(b=>b.onclick=()=>{cinema=b.dataset.c;store.set("cinema",cinema);loadCinema(cinema);});
+
+/* ---------- Reiter ---------- */
+function route(){
+  const v=["live","kino","events"].includes(location.hash.slice(1))?location.hash.slice(1):"live";
+  document.querySelectorAll("section[data-view]").forEach(s=>s.hidden=s.dataset.view!==v);
+  document.querySelectorAll(".tabs a").forEach(a=>a.setAttribute("aria-current",a.getAttribute("href")==="#"+v?"page":"false"));
+  if(v==="kino")loadCinema(cinema);
+}
+addEventListener("hashchange",route);route();
+renderKw();loadEvents();
+// beide Kinos im Hintergrund laden, damit die Merkliste Filme findet
+function loadCinemas(){["3209","1081"].forEach(id=>getJSON(KINO+id+"/").then(d=>{cinemaCache[id]=d;renderHits();renderKev();if(id===cinema)renderFilms();}).catch(()=>{}));}
+loadCinemas();
+
+/* ---------- Dauerbetrieb (iPad an der Wand) ---------- */
+// Events und Kino stündlich neu laden; fehlgeschlagene Abrufe behalten die alten Daten
+setInterval(()=>{loadEvents();loadCinemas();},60*60000);
+// Uhrzeit-Wechsel: nach Mitternacht Kino-Tag neu wählen
+let lastDay=dayKey(new Date().toISOString());
+setInterval(()=>{const d=dayKey(new Date().toISOString());if(d!==lastDay){lastDay=d;day=null;renderFilms();}},60000);
+// Nachts um 3:30 komplett neu laden, damit Änderungen an der Seite ankommen
+(function scheduleReload(){
+  const now=new Date();
+  const berlin=new Date(now.toLocaleString("en-US",{timeZone:"Europe/Berlin"}));
+  const next=new Date(berlin);next.setHours(3,30,0,0);if(next<=berlin)next.setDate(next.getDate()+1);
+  setTimeout(()=>location.reload(),next-berlin);
+})();
+// Nachts abdunkeln (23:00–5:30). Antippen zeigt die Seite 2 Minuten hell.
+const NIGHT_FROM=23*60, NIGHT_TO=5*60+30;
+let wakeUntil=0;
+function berlinMinutes(){const p=new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit",hour12:false,timeZone:"Europe/Berlin"}).split(":");return +p[0]*60+ +p[1];}
+const isNight=()=>{const m=berlinMinutes();return m>=NIGHT_FROM||m<NIGHT_TO;};
+function updateNight(){const on=isNight()&&Date.now()>wakeUntil;$("#night").hidden=!on;if(on)renderNight();}
+$("#night").addEventListener("pointerdown",()=>{wakeUntil=Date.now()+2*60000;updateNight();});
+// Nachtanzeige: Uhr, Wetter, nächste S4, nächster Dienst – gedimmt
+function nightRefresh(){const n=document.getElementById("night");if(n&&!n.hidden)renderNight();}
+// Futter & Katzenklo: Zeitpunkte im Lichtdienst (gleicher Stand auf allen Geräten), orange nach 12 h bzw. 24 h
+const PET_DUE={futter:24,klo:24}, PET_GRR=30, PET_FX={futter:["🐟","❤️","🐟","✨","❤️","🐾"],klo:["✨","🫧","✨","🐾","🫧","✨"]};
+let petData=null, toastTimer=null;
+function petAgo(t){if(!t)return "–";const m=Math.max(0,Math.round((Date.now()-t)/60000));
+  if(m<1)return "jetzt";if(m<60)return m+" min";const h=Math.floor(m/60);if(h<3)return `${h} h ${String(m%60).padStart(2,"0")}`;if(h<48)return h+" h";return Math.floor(h/24)+" Tg";}
+// ab 30 h ohne Eintrag: großer verärgerter Kater; Antippen schließt ihn für 3 h (pro Gerät), nie nachts
+const GRR_KEY="grrPause";
+function grrCheck(){
+  const g=$("#grr");if(!petData||!lichtUrl||!store.get(LICHT_KEY,"")){g.hidden=true;return;}
+  const over=["futter","klo"].filter(a=>petData[a]&&Date.now()-petData[a]>PET_GRR*3600e3);
+  const night=typeof isNight==="function"&&isNight()&&Date.now()>wakeUntil;
+  if(!over.length||night||Date.now()<store.get(GRR_KEY,0)){g.hidden=true;return;}
+  const h=a=>Math.floor((Date.now()-petData[a])/3600e3);
+  $("#grr-t").textContent=over[0]==="futter"?"Hunger!":"Klo!";
+  $("#grr-s").innerHTML=over.map(a=>a==="futter"?`Seit ${h(a)} Stunden kein Futter.`:`Klo seit ${h(a)} Stunden nicht gereinigt.`).join("<br>");
+  $("#grr-acts").innerHTML=over.map(a=>`<button type="button" data-art="${a}">${a==="futter"?"🍽️ Jetzt gefüttert":"🧹 Jetzt gereinigt"}</button>`).join("");
+  $("#grr-acts").querySelectorAll("button").forEach(b=>b.onclick=e=>{e.stopPropagation();g.hidden=true;document.querySelector(`.petb[data-art="${b.dataset.art}"]`)?.click();});
+  g.hidden=false;
+}
+$("#grr").addEventListener("click",()=>{store.set(GRR_KEY,Date.now()+3*3600e3);$("#grr").hidden=true;});
+function renderPet(){
+  const box=$("#pet");const ok=!!(lichtUrl&&store.get(LICHT_KEY,"")&&petData);box.hidden=!ok;if(!ok)return;
+  box.querySelectorAll(".petb").forEach(b=>{const a=b.dataset.art,t=petData[a];
+    b.querySelector("small").textContent=petAgo(t);b.classList.toggle("due",!t||Date.now()-t>PET_DUE[a]*3600e3);
+    b.title=(a==="futter"?"Zuletzt gefüttert":"Klo zuletzt gereinigt")+(t?": "+new Date(t).toLocaleString("de-DE",{weekday:"short",hour:"2-digit",minute:"2-digit"}):": noch nie");});
+  grrCheck();
+}
+async function loadPet(){
+  if(!lichtUrl){try{lichtUrl=(await getJSON("data/licht.json")).url||null;}catch{}}
+  if(!lichtUrl||!store.get(LICHT_KEY,"")){renderPet();return;}
+  try{petData=await lichtCall("/kater");}catch{}
+  renderPet();
+}
+function petBurst(b,art){
+  const r=b.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;
+  PET_FX[art].forEach((e,i)=>{const s=document.createElement("span");s.className="petfx";s.textContent=e;
+    const ang=-Math.PI/2+(i-2.5)*0.42+(Math.random()-.5)*.3, dist=46+Math.random()*30;
+    s.style.cssText=`left:${cx}px;top:${cy}px;--dx:${Math.cos(ang)*dist}px;--dy:${Math.sin(ang)*dist+18}px;--rot:${(Math.random()-.5)*60}deg;animation-delay:${i*35}ms`;
+    document.body.appendChild(s);setTimeout(()=>s.remove(),1200);});
+}
+function toast(text,undo){
+  $("#toast-t").textContent=text;$("#toast").hidden=false;clearTimeout(toastTimer);
+  $("#toast-undo").hidden=!undo;$("#toast-undo").onclick=async()=>{$("#toast").hidden=true;try{await undo();}catch{}};
+  toastTimer=setTimeout(()=>{$("#toast").hidden=true;},10000);
+}
+document.querySelectorAll(".petb").forEach(b=>b.onclick=async()=>{
+  const art=b.dataset.art;b.classList.remove("pop");void b.offsetWidth;b.classList.add("pop");petBurst(b,art);
+  if(navigator.vibrate)navigator.vibrate(20);
+  try{petData=await lichtCall("/kater",{art});renderPet();
+    toast(`${art==="futter"?"Gefüttert":"Klo gereinigt"} um ${fmtT(Date.now())}`,async()=>{petData=await lichtCall("/kater",{art,zurueck:true});renderPet();});}
+  catch(e){toast("Nicht gespeichert: "+e.message);}
+});
+setTimeout(loadPet,1200);setInterval(()=>{if(!document.hidden)renderPet();},30000);setInterval(()=>{if(!document.hidden)loadPet();},5*60000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadPet();});
+
+// Der Hausherr: Bild liegt verschlüsselt (Kalender-Passwort bzw. Dienst-PIN), ohne Passwort bleibt die Burg
+let katerOk=false, katerBusy=false; const katerTried=new Set();
+async function katerTry(){
+  if(katerOk||katerBusy)return;katerBusy=true;
+  try{
+    for(const [f,pw] of [["img/kater.k.enc.json",store.get(CAL_KEY,null)],["img/kater.p.enc.json",store.get(PIN_KEY,null)]]){
+      if(!pw||katerTried.has(f+pw))continue;katerTried.add(f+pw);
+      try{const d=await decryptPriv(await getJSON(f),pw);if(d?.img){document.querySelector(".crest img").src=d.img;katerOk=true;break;}}catch{}
+    }
+  }finally{katerBusy=false;}
+}
+setTimeout(katerTry,1500);setInterval(katerTry,60000);
+function renderNight(){
+  $("#nt-clock").textContent=nowHM();
+  $("#nt-date").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",timeZone:"Europe/Berlin"});
+  const it=(l,b,sub)=>`<div class="nt-it"><small>${l}</small><b>${b}</b>${sub?`<span>${sub}</span>`:""}</div>`;
+  const rows=[];
+  if(typeof wxState!=="undefined"&&wxState){const w=wxState;
+    rows.push(it("Wetter",`${ico(w.code,w.day,WMO[w.code])}${w.temp}°`,w.morgen?`Morgen ${w.morgen.max}° / ${w.morgen.min}°${w.morgen.pp>=30?` · Regen ${w.morgen.pp} %`:""}`:""));}
+  const now=Date.now();
+  const d=(typeof deps!=="undefined"?deps:[]).filter(x=>!WEST.test(x.destination)&&!x.cancelled&&(x.realtimeDepartureTime||x.plannedDepartureTime)>now)[0];
+  if(d){const t=d.realtimeDepartureTime||d.plannedDepartureTime;rows.push(it("S4 → Innenstadt",fmtT(t),`in ${Math.max(0,Math.round((t-now)/60000))} min`+(d.delayInMinutes>0?` · +${d.delayInMinutes}`:"")));}
+  else rows.push(it("S4 → Innenstadt","–","keine Abfahrt in Sicht"));
+  if(privData){
+    const n=(privData.eintraege||[]).filter(e=>e.von).map(e=>({e,start:berlinTime(e.d,e.von)})).filter(x=>x.start.getTime()>now).sort((a,b)=>a.start-b.start)[0];
+    if(n){const k=Math.round((new Date(n.e.d+"T12:00:00")-new Date(berlinDay()+"T12:00:00"))/864e5);
+      const tag=k===0?"Heute":k===1?"Morgen":new Date(n.e.d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
+      rows.push(it("Nächster Dienst",`${esc(n.e.von)}–${esc(n.e.bis||"")}`,tag));}
+  }
+  $("#nt-rows").innerHTML=rows.join("");
+}
+updateNight();setInterval(updateNight,10000);
+
+// Bildschirm wach halten (Safari ab iOS 16.4); wird beim Zurückkehren erneut angefordert
+let wakeLock=null;
+async function keepAwake(){
+  if(!("wakeLock" in navigator)||document.hidden||wakeLock)return;
+  try{wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>{wakeLock=null;});}catch{}
+}
+keepAwake();
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)keepAwake();});
+// manche Safari-Versionen erlauben es erst nach einer Berührung
+addEventListener("pointerdown",keepAwake,{passive:true});
+</script>
+</body>
+</html>

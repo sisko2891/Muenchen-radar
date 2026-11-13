@@ -1,0 +1,79 @@
+name: Daten aktualisieren & veröffentlichen
+
+on:
+  schedule:
+    - cron: "17 4-22/3 * * *"   # alle 3 Stunden (UTC), nachts Pause; Profahr nur 04 und 16 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Takt bestimmen
+        id: takt
+        run: |
+          H=$(date -u +%-H)
+          echo "drei=1" >> "$GITHUB_OUTPUT"
+          # Profahr: jeder Lauf prüft das Alter der Dienste selbst (mind. 11 h Abstand); bei manuellem Start/Push sofort
+          if [ "$GITHUB_EVENT_NAME" != "schedule" ]; then echo "sofort=1" >> "$GITHUB_OUTPUT"; fi
+      - name: Events abrufen
+        if: steps.takt.outputs.drei == '1'
+        run: python scripts/fetch_events.py
+        env:
+          TICKETMASTER_KEY: ${{ secrets.TICKETMASTER_KEY }}
+      - name: Schulferien Bayern
+        continue-on-error: true
+        run: python scripts/fetch_ferien.py
+      - name: Privat (verschlüsselt)
+        continue-on-error: true
+        run: |
+          pip install -q cryptography
+          python scripts/fetch_privat.py
+        env:
+          PROFAHR_USER: ${{ secrets.PROFAHR_USER }}
+          PROFAHR_PASS: ${{ secrets.PROFAHR_PASS }}
+          DIENSTE_PIN: ${{ secrets.DIENSTE_PIN }}
+          PRIVAT_SOFORT: ${{ steps.takt.outputs.sofort }}
+      - name: Kalender (verschlüsselt)
+        if: steps.takt.outputs.drei == '1'
+        continue-on-error: true
+        run: |
+          pip install -q cryptography python-dateutil
+          python scripts/fetch_kalender.py
+        env:
+          TIMETREE_EMAIL: ${{ secrets.TIMETREE_EMAIL }}
+          TIMETREE_PASS: ${{ secrets.TIMETREE_PASS }}
+          KALENDER_PASS: ${{ secrets.KALENDER_PASS }}
+      - name: Daten committen
+        run: |
+          git config user.name "muenchen-radar-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/events.json
+          [ -f data/ferien.json ] && git add data/ferien.json
+          for f in data/privat.enc.json data/kalender.enc.json; do [ -f "$f" ] && git add "$f"; done
+          if ! git diff --cached --quiet; then
+            git commit -m "Daten aktualisiert"
+            git pull --rebase -X theirs origin main || true
+            git push || echo "Push übersprungen"
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

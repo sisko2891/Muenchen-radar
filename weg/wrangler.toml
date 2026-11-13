@@ -1,0 +1,12 @@
+name = "katzingers-weg"
+main = "index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "WEG"
+class_name = "WegState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["WegState"]
