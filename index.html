@@ -434,6 +434,40 @@ input[type=text],input[type=password]{font:inherit;padding:7px 10px;border:1px s
 :root[data-skin="holo"] .nt-date,:root[data-skin="holo"] .nt-it small{color:rgba(85,230,255,.32)}
 :root[data-skin="holo"] .nt-it b{color:rgba(215,246,255,.45)}
 :root[data-skin="holo"] .nt-it span{color:rgba(127,168,191,.6)}
+
+/* ===== iPad-Feinschliff (Hoch- und Querformat, Kiosk) ===== */
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;touch-action:manipulation}
+body{-webkit-tap-highlight-color:transparent;overscroll-behavior-y:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+input,textarea,.msg .body{-webkit-user-select:text;user-select:text}
+/* größere Tippflächen für den Finger */
+.rb{min-width:34px;height:34px;border-radius:9px}
+.rb.sm{height:28px;padding:0 6px}
+.room .ctl{gap:3px}
+.seg2 button{padding:7px 11px;font-size:.78rem}
+#skin{padding-top:6px;padding-bottom:6px}
+.petb{height:38px}
+.chip,.tabs a{min-height:32px}
+/* kleine Schriften an der Wand besser lesbar */
+.wx-c .pp{font-size:.72rem}
+.wx-d .top i{font-size:.72rem}
+.hol{font-size:.66rem}
+.room .sub{font-size:.78rem}
+/* iPad hochkant: Tafel über die volle Breite, darunter Termine neben Heizung/Licht */
+@media (min-width:700px) and (orientation:portrait){
+  .hero{grid-template-areas:"board board" "cal heat" "lower news"}
+  .hero>.hero-left{display:contents}
+  .hero-left>.board{grid-area:board}
+  .hero-left>#cal{grid-area:cal}
+  .board-grid{grid-template-columns:minmax(0,1fr) minmax(0,1fr)!important;column-gap:0!important}
+  .board-deps{padding-right:20px}
+  .board-wx{border-top:0!important;padding-top:0!important;border-left:1px solid #1f2c40;padding-left:20px}
+}
+/* schmale Spalten: Störungstitel unter die Marken, zweizeilig */
+@media (max-width:900px){
+  .msg summary{grid-template-columns:auto minmax(0,1fr);row-gap:4px}
+  .msg .mt{grid-column:1/-1;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .msg[open] .mt{display:block;-webkit-line-clamp:unset}
+}
 </style>
 </head>
 <body>
