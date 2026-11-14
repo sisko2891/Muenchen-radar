@@ -23,7 +23,7 @@ BASE = "https://profahr.mvg.de"
 READ = "/bik/schedules/duty/week/weekItems-read"
 OUT = Path(__file__).resolve().parent.parent / "data" / "privat.enc.json"
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36"
-PAD_TO = 24000  # feste Größe, damit die Dateigröße nichts verrät
+PAD_TO = 48000  # feste Größe, damit die Dateigröße nichts verrät (mit Historie)
 ITER = 600_000
 
 jar = http.cookiejar.CookieJar()
@@ -170,11 +170,60 @@ def fix_turbo(entries):
     return sorted(entries, key=lambda e: (e["d"], e["von"] or "99")), count
 
 
-def collect():
-    """Aktuelle Woche plus folgende Wochen (sofern der Server einen Datumsparameter akzeptiert)."""
+HISTORIE_TAGE = 14  # so lange werden vergangene Rohzeilen behalten (Turbo-Erkennung über den Wochenwechsel)
+
+
+def decrypt(enc, pin):
+    from cryptography.hazmat.primitives import hashes
+    from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+    from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+    b = base64.b64decode
+    key = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=b(enc["salt"]), iterations=enc["iter"]).derive(pin.encode())
+    return json.loads(AESGCM(key).decrypt(b(enc["iv"]), b(enc["ct"]), None))
+
+
+def roh_aus(eintraege):
+    """Rohzeilen (wie Profahr sie liefert) aus fertigen Einträgen zurückgewinnen: Turbo-Vorziehen rückgängig."""
+    out = []
+    for e in eintraege:
+        e = dict(e)
+        t = e.pop("turbo", None)
+        if t == 5:          # künstlicher "frei"-Tag nach dem Vorziehen
+            continue
+        if t in (2, 3, 4):  # wurde einen Tag vorgezogen
+            e["d"] = (date.fromisoformat(e["d"]) + timedelta(days=1)).isoformat()
+        out.append(e)
+    return out
+
+
+VORHER = OUT.with_name("privat.prev.enc.json")  # optionaler älterer Stand (einmaliger Startwert)
+
+
+def historie(pin):
+    """Vergangene Rohzeilen aus der vorigen (verschlüsselten) Datei – Profahr selbst liefert erst ab heute."""
+    roh, seen = [], set()
+    for f in (OUT, VORHER):
+        if not f.exists():
+            continue
+        try:
+            alt = decrypt(json.loads(f.read_text()), pin)
+        except Exception as e:
+            print("Historie nicht lesbar:", f.name, type(e).__name__)
+            continue
+        for e in alt.get("roh") or roh_aus(alt.get("eintraege") or []):
+            k = (e.get("d"), e.get("von"), e.get("name"))
+            if e.get("d") and k not in seen:
+                seen.add(k)
+                roh.append(e)
+    grenze = (date.today() - timedelta(days=HISTORIE_TAGE)).isoformat()
+    return [e for e in roh if e["d"] >= grenze]
+
+
+def collect(pin=None):
+    """Aktuelle Woche plus folgende Wochen (sofern der Server einen Datumsparameter akzeptiert), davor die Historie."""
     items = normalize(read_items())
     if not items:
-        return items
+        return items, []
     have = {e["d"] for e in items}
     last = max(date.fromisoformat(e["d"]) for e in items)
     for weeks in range(1, 6):
@@ -193,9 +242,15 @@ def collect():
             break
         items += new
         have |= {e["d"] for e in new}
-    items, n = fix_turbo(items)
+    erster = min(e["d"] for e in items)
+    alt = [e for e in (historie(pin) if pin else []) if e["d"] < erster]
+    print("Historie:", len({e["d"] for e in alt}), "Tage vor", erster)
+    roh = [dict(e) for e in alt + items]
+    items, n = fix_turbo([dict(e) for e in alt + items])
     print("Turbo-Folgen erkannt:", n)
-    return items
+    # angezeigt wird ab gestern (laufender Nachtdienst), gespeichert werden die Rohzeilen für den nächsten Abruf
+    gestern = (date.today() - timedelta(days=1)).isoformat()
+    return [e for e in items if e["d"] >= gestern], roh
 
 
 def stats(items_raw, entries):
@@ -250,15 +305,15 @@ def main():
         raw = read_items()
         stats(raw, normalize(raw))
         print("\nMit Folgewochen:")
-        allx = collect()
+        allx, _ = collect(pin if len(pin) >= 6 else None)
         stats(raw, allx)
         return
     if len(pin) < 6:
         raise SystemExit("übersprungen: DIENSTE_PIN fehlt oder ist zu kurz")
-    entries = collect()
+    entries, roh = collect(pin)
     if not entries:
         raise SystemExit("keine Einträge erhalten, alte Datei bleibt")
-    payload = {"stand": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "eintraege": entries}
+    payload = {"stand": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "eintraege": entries, "roh": roh}
     enc = encrypt(payload, pin)
     enc["t"] = int(datetime.now(timezone.utc).timestamp())  # nur der Zeitpunkt, für den Abstand zwischen Abrufen
     OUT.write_text(json.dumps(enc))
