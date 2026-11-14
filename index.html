@@ -1329,7 +1329,9 @@ function renderHits(){
 /* ---------- Events ---------- */
 let events=[], evFilter=store.get("evFilter","woche");
 const MON=["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
-function evDate(e){if(!e.start)return '<div class="date"><span>offen</span></div>';const [y,m,d]=e.start.split("-");return `<div class="date"><b>${d}</b><span>${MON[+m-1]} ${y.slice(2)}</span></div>`;}
+// Datum links: bei laufenden Events der Tag im gewählten Zeitraum (sonst heute), nicht der längst vergangene Starttag
+function evShownDay(e){if(!e.start)return null;const rg=typeof evRange==="function"?evRange():null;const ab=rg?rg[0]:berlinDay();return e.start<ab&&(e.end||e.start)>=ab?ab:e.start;}
+function evDate(e){const t=evShownDay(e);if(!t)return '<div class="date"><span>offen</span></div>';const [y,m,d]=t.split("-");return `<div class="date"><b>${d}</b><span>${MON[+m-1]} ${y.slice(2)}</span></div>`;}
 let baseSeen=0;
 // Vorverkauf: Zeitpunkt (Europe/Berlin, ohne Zone aus Ticketmaster als UTC geliefert)
 const presaleTs=e=>e.presale?Date.parse(e.presale+(e.presale.length===16?":00Z":"")):NaN;
@@ -1374,7 +1376,9 @@ function evRange(){
 (()=>{const w=$("#ev-when"),d=$("#ev-day");
   w.value=store.get("evWhen","alle");if(!w.value)w.value="alle";d.value=store.get("evDay","")||berlinDay();d.hidden=w.value!=="tag";
   w.onchange=()=>{store.set("evWhen",w.value);d.hidden=w.value!=="tag";if(w.value==="tag"&&!d.value)d.value=berlinDay();renderEvents();};
-  d.onchange=()=>{store.set("evDay",d.value);renderEvents();};})();
+  // iPad: Auswahl im Kalender sofort übernehmen (input), alter gespeicherter Tag wird auf heute gesetzt
+  if(d.value<berlinDay())d.value=berlinDay();
+  d.oninput=d.onchange=()=>{store.set("evDay",d.value);renderEvents();};})();
 
 function renderKev(){
   const re=kwRe(), hit=t=>re&&re.test(t)?"hit":"";
