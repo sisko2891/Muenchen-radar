@@ -180,6 +180,8 @@ input[type=text],input[type=password]{font:inherit;padding:7px 10px;border:1px s
 .hero>.lower{grid-area:lower;display:grid;gap:12px;min-width:0;align-content:start}
 .hero>.kev{grid-area:news}
 .hero-left{display:grid;gap:14px;align-content:start;min-width:0}
+.ev-dates{margin:2px 0 10px;gap:8px}
+input.pill[type=date]{font:600 .85rem var(--f-display);color:var(--ink);background:var(--panel);min-height:32px;padding:4px 10px;flex:0 0 auto}
 .kev{display:grid;gap:0;align-content:start;background:var(--new-bg);border-color:var(--new-line)}
 .kev h3{font-size:.72rem;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:12px 0 2px;font-weight:800}
 .kev h3:first-of-type{margin-top:4px}
@@ -640,6 +642,15 @@ input,textarea,.msg .body{-webkit-user-select:text;user-select:text}
       <button class="chip" data-f="vvkbald" aria-pressed="false">VVK startet bald</button>
       <button class="chip" data-f="neu" aria-pressed="false">Neu angekündigt</button>
       <button class="chip" data-f="kino" aria-pressed="false">Kino-Events</button>
+    </div>
+    <div class="row ev-dates">
+      <select class="pill" id="ev-when" aria-label="Zeitraum">
+        <option value="alle">📅 Alle Termine</option><option value="heute">Heute</option><option value="morgen">Morgen</option>
+        <option value="we">Nächstes Wochenende</option><option value="7">Nächste 7 Tage</option><option value="30">Nächste 30 Tage</option>
+        <option value="tag">Bestimmter Tag …</option>
+      </select>
+      <input type="date" id="ev-day" class="pill" aria-label="Tag" hidden>
+      <span class="muted" id="ev-count"></span>
     </div>
     <div class="card" id="ev-list"><div class="empty">Lade Events…</div></div>
     <p class="muted" id="ev-stamp"></p>
@@ -1339,12 +1350,31 @@ function renderEvents(){
   let list=evFilter==="vvkbald"
     ? events.filter(e=>presaleTs(e)>Date.now()).sort((a,b)=>presaleTs(a)-presaleTs(b))
     : events.filter(e=>evFilter==="neu"?isNew(e):e.tag.split(",").includes(evFilter));
+  const rg=evRange();
+  if(rg)list=list.filter(e=>e.start&&e.start<=rg[1]&&(e.end||e.start)>=rg[0]);
+  $("#ev-count").textContent=rg?`${list.length} ${list.length===1?"Event":"Events"}`:"";
   $("#ev-list").innerHTML=list.length?list.map(e=>`<div class="ev ${re&&re.test(e.title)?"hit":""}">${evDate(e)}<div style="min-width:0">
     <a href="${esc(e.url)}" target="_blank" rel="noopener">${esc(e.title)}</a> ${isNew(e)?'<span class="tag new">neu</span>':""}${e.cancelled?' <span class="tag now">abgesagt</span>':""}${presaleTxt(e)?` <span class="tag plan">${esc(presaleTxt(e))}</span>`:""}
     <div class="muted">${esc([e.when,e.location].filter(Boolean).join(" · "))}${e.end&&e.end!==e.start?` · bis ${esc(e.end.split("-").reverse().join("."))}`:""} · ${esc(e.source)}</div></div></div>`).join("")
     :`<div class="empty">${evFilter==="neu"?"Keine neu angekündigten Events in den letzten 14 Tagen.":evFilter==="vvkbald"?"Kein bekannter VVK-Start in nächster Zeit (Quelle: Ticketmaster).":"Keine Einträge."}</div>`;
 }
 document.querySelectorAll("#ev-filter .chip").forEach(b=>b.onclick=()=>{evFilter=b.dataset.f;store.set("evFilter",evFilter);renderEvents();});
+// Datumsfilter: Zeitraum als [von, bis] (JJJJ-MM-TT) oder null
+function evRange(){
+  const w=$("#ev-when").value, d0=berlinDay();
+  if(w==="alle")return null;
+  if(w==="heute")return [d0,d0];
+  if(w==="morgen"){const d=berlinDay(1);return [d,d];}
+  if(w==="7")return [d0,berlinDay(6)];
+  if(w==="30")return [d0,berlinDay(29)];
+  if(w==="we"){const wd=new Date(d0+"T12:00:00").getDay();const sa=wd===0?-1:wd===6?0:6-wd;return [wd===0?d0:berlinDay(sa),berlinDay(sa+1)];}
+  if(w==="tag"){const v=$("#ev-day").value||d0;return [v,v];}
+  return null;
+}
+(()=>{const w=$("#ev-when"),d=$("#ev-day");
+  w.value=store.get("evWhen","alle");if(!w.value)w.value="alle";d.value=store.get("evDay","")||berlinDay();d.hidden=w.value!=="tag";
+  w.onchange=()=>{store.set("evWhen",w.value);d.hidden=w.value!=="tag";if(w.value==="tag"&&!d.value)d.value=berlinDay();renderEvents();};
+  d.onchange=()=>{store.set("evDay",d.value);renderEvents();};})();
 
 function renderKev(){
   const re=kwRe(), hit=t=>re&&re.test(t)?"hit":"";

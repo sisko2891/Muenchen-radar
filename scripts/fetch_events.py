@@ -236,6 +236,70 @@ def fetch_ticketmaster():
     return out
 
 
+# ---------- Doppelte über Quellen hinweg zusammenführen ----------
+QUELLEN_RANG = ["Olympiapark", "MünchenMusik", "Mathäser", "muenchen.de", "Ticketmaster"]
+
+
+def _norm(t):
+    t = (t or "").lower().replace("&", " und ").replace("ß", "ss")
+    t = re.sub(r"\(.*?\)|\[.*?\]", " ", t)
+    t = re.sub(r"[^a-z0-9äöü ]+", " ", t)
+    return " ".join(t.split())
+
+
+def _kern(t):
+    """Titel ohne Tour-/Paket-Zusätze: Teil vor „:“, „ - “, „|“, „–“."""
+    return _norm(re.split(r"\s[-–|]\s|:|\|", t or "", maxsplit=1)[0])
+
+
+def _ort(o):
+    w = [x for x in _norm(o).split() if x not in ("münchen", "muenchen", "munich", "die", "das", "der")]
+    return w[0] if w else ""
+
+
+def _gleich(a, b):
+    if (a.get("start") or "") != (b.get("start") or "") or not a.get("start"):
+        return False
+    oa, ob = _ort(a.get("location")), _ort(b.get("location"))
+    if oa and ob and oa != ob and not (oa.startswith(ob) or ob.startswith(oa)):
+        return False
+    na, nb = _norm(a["title"]), _norm(b["title"])
+    ka, kb = _kern(a["title"]), _kern(b["title"])
+    if na == nb or (ka and ka == kb):
+        return True
+    ta, tb = set(ka.split()), set(kb.split())
+    return bool(ta and tb) and (ta <= set(na.split()) and ta <= set(nb.split()) or tb <= set(na.split()) and tb <= set(nb.split())) and min(len(ta), len(tb)) >= 2
+
+
+def dedupe(evs):
+    gruppen = []
+    for e in evs:
+        for g in gruppen:
+            if any(_gleich(e, x) for x in g):
+                g.append(e)
+                break
+        else:
+            gruppen.append([e])
+    out = []
+    for g in gruppen:
+        if len(g) == 1:
+            out.append(g[0])
+            continue
+        rang = lambda x: (x["title"].isupper(), QUELLEN_RANG.index(x["source"]) if x["source"] in QUELLEN_RANG else 9, -len(x.get("when") or ""), len(x["title"]))
+        best = dict(sorted(g, key=rang)[0])
+        aelteste = min(g, key=lambda x: x.get("firstSeen") or "9")
+        best["id"] = aelteste["id"]                      # stabile Kennung, damit „neu“ nicht erneut auftaucht
+        best["firstSeen"] = aelteste.get("firstSeen")
+        best["tag"] = ",".join(sorted({t for x in g for t in (x.get("tag") or "").split(",") if t}))
+        best["source"] = ", ".join(sorted({x["source"] for x in g}, key=lambda q: QUELLEN_RANG.index(q) if q in QUELLEN_RANG else 9))
+        best["presale"] = best.get("presale") or next((x.get("presale") for x in g if x.get("presale")), None)
+        best["cancelled"] = all(x.get("cancelled") for x in g)
+        if best.get("presale") is None:
+            best.pop("presale", None)
+        out.append(best)
+    return out
+
+
 def main():
     try:
         old = {e["id"]: e for e in json.loads(OUT.read_text())["events"]}
@@ -264,6 +328,9 @@ def main():
             continue
         e["firstSeen"] = old.get(e["id"], {}).get("firstSeen", stamp)
         uniq[e["id"]] = e
+    merged = dedupe(list(uniq.values()))
+    print("Doppelte über Quellen zusammengeführt:", len(uniq) - len(merged))
+    uniq = {e["id"]: e for e in merged}
     # vergangene Events raus
     today = NOW.strftime("%Y-%m-%d")
     keep = [e for e in uniq.values() if not (e.get("end") or e.get("start")) or (e.get("end") or e.get("start")) >= today]
