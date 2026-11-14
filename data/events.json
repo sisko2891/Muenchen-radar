@@ -1,5 +1,5 @@
 {
- "updated": "2026-11-14T18:46:03Z",
+ "updated": "2026-11-14T20:14:22Z",
  "sources": {
   "muenchen.de": {
    "ok": true,
@@ -19,7 +19,7 @@
   },
   "Ticketmaster": {
    "ok": true,
-   "count": 110
+   "count": 109
   }
  },
  "events": [
@@ -38,22 +38,9 @@
    "firstSeen": "2026-11-09T07:44:51Z"
   },
   {
-   "id": "mde:/veranstaltungen/konzerte/90s-super-show",
-   "source": "muenchen.de",
-   "tag": "konzert,woche",
-   "title": "90s Super Show",
-   "start": "2026-11-14",
-   "end": "2026-11-14",
-   "when": "Sa. 14.11.2026 17:00 - 23:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.muenchen.de/veranstaltungen/konzerte/90s-super-show",
-   "firstSeen": "2026-11-13T19:58:33Z"
-  },
-  {
    "id": "op:90s-super-show-m-nchen:2026-11-14",
-   "source": "Olympiapark",
-   "tag": "konzert",
+   "source": "Olympiapark, muenchen.de",
+   "tag": "konzert,woche",
    "title": "90s Super Show München",
    "start": "2026-11-14",
    "end": "2026-11-14",
@@ -245,21 +232,6 @@
    "category": "",
    "url": "https://www.muenchen.de/veranstaltungen/freizeit/ausstellung-museen/mater-gonzalo-borondo",
    "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vq440J7",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Murda - UZAY TOUR",
-   "start": "2026-11-14",
-   "end": "2026-11-14",
-   "when": "20:00 Uhr",
-   "location": "Muffathalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/murda-uzay-tour-tickets/1755564984",
-   "presale": "2026-06-18T08:00",
-   "cancelled": true,
-   "firstSeen": "2026-11-09T11:20:32Z"
   },
   {
    "id": "mde:/veranstaltungen/freizeit/weihnachtsmarkt-christkindlmarkt/muenchner-eiszauber",
@@ -471,21 +443,8 @@
   },
   {
    "id": "mde:/veranstaltungen/konzerte/rock-pop/bob-dylan",
-   "source": "muenchen.de",
+   "source": "Olympiapark, muenchen.de, Ticketmaster",
    "tag": "konzert,woche",
-   "title": "BOB DYLAN",
-   "start": "2026-11-15",
-   "end": "2026-11-15",
-   "when": "So. 15.11.2026 20:00 - 23:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.muenchen.de/veranstaltungen/konzerte/rock-pop/bob-dylan",
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "op:bob-dylan:2026-11-15",
-   "source": "Olympiapark",
-   "tag": "konzert",
    "title": "Bob Dylan",
    "start": "2026-11-15",
    "end": "2026-11-15",
@@ -494,22 +453,8 @@
    "category": "",
    "url": "https://www.olympiapark.de/de/veranstaltungen/?q=Bob%20Dylan",
    "cancelled": false,
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z1kqt8Au9",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Bob Dylan",
-   "start": "2026-11-15",
-   "end": "2026-11-15",
-   "when": "20:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/bob-dylan-tickets/769405357",
-   "presale": "2026-07-22T09:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
+   "firstSeen": "2026-11-09T07:44:51Z",
+   "presale": "2026-07-22T09:00"
   },
   {
    "id": "mde:/veranstaltungen/sport/nfl-muenchen-2026",
@@ -598,20 +543,7 @@
   },
   {
    "id": "mde:/veranstaltungen/konzerte/rock-pop/tokio-hotel-muenchen-2026",
-   "source": "muenchen.de",
-   "tag": "konzert",
-   "title": "Tokio Hotel",
-   "start": "2026-11-16",
-   "end": "2026-11-16",
-   "when": "Mo. 16.11.2026 20:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.muenchen.de/veranstaltungen/konzerte/rock-pop/tokio-hotel-muenchen-2026",
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "op:tokio-hotel:2026-11-16",
-   "source": "Olympiapark",
+   "source": "Olympiapark, muenchen.de",
    "tag": "konzert",
    "title": "Tokio Hotel",
    "start": "2026-11-16",
@@ -995,20 +927,7 @@
   },
   {
    "id": "mde:/veranstaltungen/konzerte/rock-pop/bap",
-   "source": "muenchen.de",
-   "tag": "konzert",
-   "title": "BAP",
-   "start": "2026-12-03",
-   "end": "2026-12-03",
-   "when": "Do. 03.12.2026 19:30 - 23:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.muenchen.de/veranstaltungen/konzerte/rock-pop/bap",
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "op:bap:2026-12-03",
-   "source": "Olympiapark",
+   "source": "Olympiapark, muenchen.de",
    "tag": "konzert",
    "title": "BAP",
    "start": "2026-12-03",
@@ -1065,7 +984,7 @@
   },
   {
    "id": "op:noah-kahan:2026-12-04",
-   "source": "Olympiapark",
+   "source": "Olympiapark, Ticketmaster",
    "tag": "konzert",
    "title": "Noah Kahan",
    "start": "2026-12-04",
@@ -1075,22 +994,8 @@
    "category": "",
    "url": "https://www.olympiapark.de/de/veranstaltungen/?q=Noah%20Kahan",
    "cancelled": false,
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z1k3Fveos",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Noah Kahan - The Great Divide Tour",
-   "start": "2026-12-04",
-   "end": "2026-12-04",
-   "when": "19:30 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/noah-kahan-the-great-divide-tour-tickets/488042471",
-   "presale": "2026-04-16T08:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
+   "firstSeen": "2026-11-09T07:44:51Z",
+   "presale": "2026-04-16T08:00"
   },
   {
    "id": "tm:Z698xZC2Z1kovGxfM",
@@ -1180,21 +1085,6 @@
    "firstSeen": "2026-11-09T11:20:32Z"
   },
   {
-   "id": "tm:Z698xZC2Z1kaf1Avb",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "JOHNO37 - Tour 2026 | Premium Upgrade (no Ticket included)",
-   "start": "2026-12-08",
-   "end": "2026-12-08",
-   "when": "",
-   "location": "Backstage",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/johno37-tour-2026-%7C-premium-upgrade-kein-ticket--tickets/254285058",
-   "presale": "2025-12-17T14:28",
-   "cancelled": true,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
    "id": "tm:Z698xZC2Z16vqtqfOP",
    "source": "Ticketmaster",
    "tag": "konzert",
@@ -1240,7 +1130,7 @@
   },
   {
    "id": "op:rea-garvey-s:2026-12-12",
-   "source": "Olympiapark",
+   "source": "Olympiapark, Ticketmaster",
    "tag": "konzert",
    "title": "Rea Garvey’s",
    "start": "2026-12-12",
@@ -1250,22 +1140,8 @@
    "category": "",
    "url": "https://www.olympiapark.de/de/veranstaltungen/?q=Rea%20Garvey%E2%80%99s",
    "cancelled": false,
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z1krp1ka8",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Rea Garvey’s Christmas Calling",
-   "start": "2026-12-12",
-   "end": "2026-12-12",
-   "when": "20:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/rea-garveys-christmas-calling-tickets/796286250",
-   "presale": "2025-12-11T14:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
+   "firstSeen": "2026-11-09T07:44:51Z",
+   "presale": "2025-12-11T14:00"
   },
   {
    "id": "tm:Z698xZC2Z1kkbov--",
@@ -1319,21 +1195,6 @@
    "location": "TonHalle",
    "category": "",
    "url": "https://www.ticketmaster.de/event/haaland936-san-tour-tickets/936560395",
-   "presale": "2026-05-06T14:00",
-   "cancelled": true,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z1k34og3K",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Haaland936 - SAN TOUR | Premium Package",
-   "start": "2026-12-15",
-   "end": "2026-12-15",
-   "when": "20:00 Uhr",
-   "location": "TonHalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/haaland936-san-tour-%7C-premium-package-tickets/495475493",
    "presale": "2026-05-06T14:00",
    "cancelled": true,
    "firstSeen": "2026-11-09T11:20:32Z"
@@ -1423,20 +1284,7 @@
   },
   {
    "id": "mde:/veranstaltungen/konzerte/rock-pop/pur",
-   "source": "muenchen.de",
-   "tag": "konzert",
-   "title": "PUR",
-   "start": "2026-12-16",
-   "end": "2026-12-16",
-   "when": "Mi. 16.12.2026 20:00 - 23:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.muenchen.de/veranstaltungen/konzerte/rock-pop/pur",
-   "firstSeen": "2026-11-09T07:44:51Z"
-  },
-  {
-   "id": "op:pur:2026-12-16",
-   "source": "Olympiapark",
+   "source": "Olympiapark, muenchen.de",
    "tag": "konzert",
    "title": "PUR",
    "start": "2026-12-16",
@@ -2153,7 +2001,7 @@
    "firstSeen": "2026-11-09T11:20:32Z"
   },
   {
-   "id": "tm:Z698xZC2Z16vfVofPp",
+   "id": "tm:Z698xZC2Z16vGdq9Av",
    "source": "Ticketmaster",
    "tag": "konzert",
    "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War",
@@ -2163,21 +2011,6 @@
    "location": "Olympiahalle",
    "category": "",
    "url": "https://www.ticketmaster.de/event/thirty-seconds-to-mars-presents-a-beautiful-lie-vs-this-is-war-tickets/1534454956",
-   "presale": "2026-04-16T08:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vGdq9Av",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Thirty Seconds to Mars Presents A Beautiful Lie vs This Is War | VIP",
-   "start": "2027-04-12",
-   "end": "2027-04-12",
-   "when": "20:00 Uhr",
-   "location": "Olympiahalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/thirty-seconds-to-mars-presents-a-beautiful-lie-vs-this-is-war-%7C-vip-tickets/1303757141",
    "presale": "2026-04-16T08:00",
    "cancelled": false,
    "firstSeen": "2026-11-09T11:20:32Z"
@@ -2436,7 +2269,7 @@
    "firstSeen": "2026-11-09T07:44:51Z"
   },
   {
-   "id": "tm:Z698xZC2Z1kFUjy1p",
+   "id": "tm:Z698xZC2Z16vpd83rZ",
    "source": "Ticketmaster",
    "tag": "konzert",
    "title": "Delil & Avie - 2ORTAKS TOUR 2027",
@@ -2446,21 +2279,6 @@
    "location": "Backstage (Werk)",
    "category": "",
    "url": "https://www.ticketmaster.de/event/delil--avie-2ortaks-tour-2027-tickets/236739296",
-   "presale": "2026-05-27T14:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vpd83rZ",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Delil & Avie - 2ORTAKS TOUR 2027 | Premium Package",
-   "start": "2027-06-05",
-   "end": "2027-06-05",
-   "when": "20:00 Uhr",
-   "location": "Backstage (Werk)",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/delil--avie-2ortaks-tour-2027-%7C-premium-package-tickets/1583412780",
    "presale": "2026-05-27T14:00",
    "cancelled": false,
    "firstSeen": "2026-11-09T11:20:32Z"
@@ -2482,21 +2300,6 @@
   },
   {
    "id": "tm:Z698xZC2Z16evZbt4w",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "MERO - LEGACY TOUR 2027",
-   "start": "2027-06-17",
-   "end": "2027-06-17",
-   "when": "20:00 Uhr",
-   "location": "TonHalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/mero-legacy-tour-2027-tickets/2040629572",
-   "presale": "2026-08-21T14:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vAzAE3k",
    "source": "Ticketmaster",
    "tag": "konzert",
    "title": "MERO - LEGACY TOUR 2027 | Premium Package",
@@ -2599,21 +2402,6 @@
    "firstSeen": "2026-11-09T11:20:32Z"
   },
   {
-   "id": "tm:Z698xZC2Z16v_vq64Z",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Oasis Live '27 | Ticket + Hotel Packages",
-   "start": "2027-07-02",
-   "end": "2027-07-02",
-   "when": "18:00 Uhr",
-   "location": "Allianz Arena",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/oasis-live-27-%7C-ticket--hotel-packages-tickets/1641747540",
-   "presale": "2026-09-27T10:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
    "id": "tm:Z698xZC2Z16eZOFFoV",
    "source": "Ticketmaster",
    "tag": "konzert",
@@ -2624,21 +2412,6 @@
    "location": "Allianz Arena",
    "category": "",
    "url": "https://www.ticketmaster.de/event/oasis-live-27-tickets/2020208474",
-   "presale": "2026-09-27T10:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16voIvMPK",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Oasis Live '27 | Ticket + Hotel Packages",
-   "start": "2027-07-03",
-   "end": "2027-07-03",
-   "when": "18:00 Uhr",
-   "location": "Allianz Arena",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/oasis-live-27-%7C-ticket--hotel-packages-tickets/1468077953",
    "presale": "2026-09-27T10:00",
    "cancelled": false,
    "firstSeen": "2026-11-09T11:20:32Z"
@@ -2667,21 +2440,6 @@
    "location": "Allianz Arena",
    "category": "",
    "url": "https://www.ticketmaster.de/event/oasis-live-27-tickets/1108119575",
-   "presale": "2026-09-27T10:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vCF7gub",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Oasis Live '27 | Ticket + Hotel Packages",
-   "start": "2027-07-06",
-   "end": "2027-07-06",
-   "when": "18:00 Uhr",
-   "location": "Allianz Arena",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/oasis-live-27-%7C-ticket--hotel-packages-tickets/1388135358",
    "presale": "2026-09-27T10:00",
    "cancelled": false,
    "firstSeen": "2026-11-09T11:20:32Z"
@@ -2814,7 +2572,7 @@
    "firstSeen": "2026-11-09T07:44:51Z"
   },
   {
-   "id": "tm:Z698xZC2Z16vu_oxxA",
+   "id": "tm:Z698xZC2Z16vjaPAP7",
    "source": "Ticketmaster",
    "tag": "konzert",
    "title": "Genetikk - Live 2027",
@@ -2824,21 +2582,6 @@
    "location": "TonHalle",
    "category": "",
    "url": "https://www.ticketmaster.de/event/genetikk-live-2027-tickets/1359462885",
-   "presale": "2026-08-10T14:00",
-   "cancelled": false,
-   "firstSeen": "2026-11-09T11:20:32Z"
-  },
-  {
-   "id": "tm:Z698xZC2Z16vjaPAP7",
-   "source": "Ticketmaster",
-   "tag": "konzert",
-   "title": "Genetikk - Live 2027 | Premium Package",
-   "start": "2027-12-10",
-   "end": "2027-12-10",
-   "when": "20:00 Uhr",
-   "location": "TonHalle",
-   "category": "",
-   "url": "https://www.ticketmaster.de/event/genetikk-live-2027-%7C-premium-package-tickets/1709945944",
    "presale": "2026-08-10T14:00",
    "cancelled": false,
    "firstSeen": "2026-11-09T11:20:32Z"
