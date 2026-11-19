@@ -1,0 +1,198 @@
+name: Daten aktualisieren & veröffentlichen
+
+on:
+  schedule:
+    # GitHub lässt geplante Läufe oft ausfallen oder startet sie stundenlang gar nicht. Deshalb stößt zusätzlich ein
+    # Zeitgeber bei Cloudflare (Dienst daten/) den Ablauf stündlich an. Gearbeitet wird in beiden Fällen nur, wenn die
+    # Daten älter als gut 2,5 Stunden sind (Auftrag „takt“).
+    # Dienste (Profahr) werden dabei jedes Mal mit geholt, sofern der letzte Abruf mindestens 2,5 Stunden her ist.
+    - cron: "23 4-22 * * *"
+  workflow_dispatch:
+    inputs:
+      anlass:
+        description: "hand = sofort alles holen · zeitplan = wie ein geplanter Lauf (so startet der Zeitgeber bei Cloudflare)"
+        default: hand
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  takt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      arbeit: ${{ steps.takt.outputs.arbeit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          sparse-checkout: data/events.json
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Takt bestimmen
+        id: takt
+        env:
+          # geplant = GitHubs eigener Zeitplan oder der Zeitgeber bei Cloudflare (Start mit anlass „zeitplan“)
+          GEPLANT: ${{ (github.event_name == 'schedule' || inputs.anlass == 'zeitplan') && '1' || '0' }}
+        run: |
+          ALT=$(python3 -c "
+          import json, datetime as d
+          try:
+              u = json.load(open('data/events.json'))['updated']
+              print(int((d.datetime.now(d.timezone.utc) - d.datetime.strptime(u, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=d.timezone.utc)).total_seconds()))
+          except Exception:
+              print(999999)
+          ")
+          if [ "$GEPLANT" = "1" ] && [ "$ALT" -lt 9300 ]; then
+            echo "Daten sind $((ALT / 60)) min alt – nichts zu tun"
+            echo "arbeit=0" >> "$GITHUB_OUTPUT"
+          else
+            echo "arbeit=1" >> "$GITHUB_OUTPUT"
+          fi
+
+  update:
+    needs: takt
+    if: needs.takt.outputs.arbeit == '1'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    # immer nur ein Lauf gleichzeitig; Läufe ohne Arbeit (siehe „takt“) reihen sich gar nicht erst ein
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pages: write
+      id-token: write
+      actions: write   # nur für das Löschen alter Läufe (letzter Schritt)
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.12"
+      - name: Pakete installieren (feste Versionen mit Prüfsummen, ohne Zugriff auf Geheimnisse)
+        run: pip install -q --require-hashes -r scripts/requirements.txt
+
+      # ---------- öffentliche Daten ----------
+      - name: Events abrufen
+        id: events
+        continue-on-error: true
+        timeout-minutes: 25      # eine hängende Quelle kostet nur diesen Schritt, nicht den ganzen Lauf
+        run: python scripts/fetch_events.py
+        env:
+          TICKETMASTER_KEY: ${{ secrets.TICKETMASTER_KEY }}
+      - name: Schulferien Bayern
+        id: ferien
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python scripts/fetch_ferien.py
+      - name: Pollenflug (DWD)
+        id: pollen
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python scripts/fetch_pollen.py
+      - name: Kinopreise (Mathäser)
+        id: kino
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python scripts/fetch_kino.py
+
+      # ---------- private Daten: nur verschlüsselt in den geschützten Speicher, nichts davon ins Projekt oder Protokoll ----------
+      - name: Schlüssel für den geschützten Speicher ableiten
+        id: schluessel
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+        run: |
+          [ -n "$CLOUDFLARE_API_TOKEN" ] || { echo "Cloudflare-Token fehlt – private Daten werden übersprungen"; exit 0; }
+          for art in upload intern; do
+            K=$(printf 'katzingers-daten/%s/v1:%s' "$art" "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)
+            echo "::add-mask::$K"
+            echo "$art=$K" >> "$GITHUB_OUTPUT"
+          done
+      - name: Dienste (verschlüsselt)
+        id: privat
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python scripts/fetch_privat.py
+        env:
+          PROFAHR_USER: ${{ secrets.PROFAHR_USER }}
+          PROFAHR_PASS: ${{ secrets.PROFAHR_PASS }}
+          DIENSTE_PIN: ${{ secrets.DIENSTE_PIN }}
+          DATEN_UPLOAD_KEY: ${{ steps.schluessel.outputs.upload }}
+          DATEN_INTERN: ${{ steps.schluessel.outputs.intern }}
+          # nur ein manueller Start holt sofort; Push und Zeitplan halten den Mindestabstand ein (2,5 Stunden)
+          PRIVAT_SOFORT: ${{ github.event_name == 'workflow_dispatch' && inputs.anlass != 'zeitplan' && '1' || '0' }}
+      - name: Termine (verschlüsselt)
+        id: kalender
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python scripts/fetch_kalender.py
+        env:
+          TIMETREE_EMAIL: ${{ secrets.TIMETREE_EMAIL }}
+          TIMETREE_PASS: ${{ secrets.TIMETREE_PASS }}
+          KALENDER_PASS: ${{ secrets.KALENDER_PASS }}
+          DATEN_UPLOAD_KEY: ${{ steps.schluessel.outputs.upload }}
+          DATEN_INTERN: ${{ steps.schluessel.outputs.intern }}
+          PRIVAT_SOFORT: ${{ github.event_name == 'workflow_dispatch' && inputs.anlass != 'zeitplan' && '1' || '0' }}
+
+      - name: Daten speichern
+        id: speichern
+        run: |
+          # geänderte und gelöschte Dateien (u. a. die früheren verschlüsselten Ablagen), dazu neue öffentliche Daten
+          git add -u data img
+          for f in events events-seen ferien pollen kino; do [ -f "data/$f.json" ] && git add "data/$f.json"; done
+          # Sicherung: Verschlüsselte private Dateien werden nie (wieder) ins Projekt aufgenommen
+          if git diff --cached --name-only --diff-filter=AM | grep -q '\.enc\.json$'; then echo "::error::private Datei würde ins Projekt gelangen – abgebrochen"; exit 1; fi
+          werkzeug/git-speichern.sh "Daten aktualisiert" || { echo "::warning::Daten konnten nicht ins Projekt geschrieben werden (Seite wird trotzdem veröffentlicht)"; echo "fehler=1" >> "$GITHUB_OUTPUT"; }
+
+      # ---------- Seite veröffentlichen: nur was die Seite braucht ----------
+      - name: Seite zusammenstellen
+        run: |
+          mkdir _site
+          cp -r index.html js lib img data fonts _site/
+          find _site -name '*.enc.json' -delete     # private Ablagen gehören nie auf die öffentliche Seite
+          rm -f _site/data/events-seen.json         # Merkliste des Abgleichs: braucht die Seite nicht
+          python3 - <<'PY'
+          # Skripte mit Prüfsumme adressieren: Seite und Skript passen so immer zusammen (kein veralteter Zwischenspeicher),
+          # und die stündliche Versionsprüfung der Seite erkennt auch geänderte Skripte.
+          import hashlib, pathlib, re
+          p = pathlib.Path("_site/index.html")
+          def marke(m):
+              return f'{m.group(1)}="{m.group(2)}?v={hashlib.sha256((pathlib.Path("_site") / m.group(2)).read_bytes()).hexdigest()[:12]}"'
+          s, n = re.subn(r'(src|href)="((?:js|fonts)/[\w.-]+\.(?:js|css))"', marke, p.read_text())
+          assert n >= 2, "Skripte in index.html nicht gefunden"
+          p.write_text(s)
+          PY
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
+
+      # Läufe und ihre Protokolle sammeln sich sonst unbegrenzt an (der Zeitgeber startet stündlich einen).
+      - name: Alte Läufe löschen (älter als 3 Tage)
+        if: always()
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          GRENZE=$(date -u -d '3 days ago' +%Y-%m-%dT%H:%M:%SZ)
+          n=0
+          for id in $(gh api --paginate "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100&created=%3C$GRENZE" --jq '.workflow_runs[].id'); do
+            [ "$id" = "$GITHUB_RUN_ID" ] && continue
+            if gh api -X DELETE "repos/$GITHUB_REPOSITORY/actions/runs/$id" > /dev/null 2>&1; then n=$((n+1)); fi
+          done
+          echo "Alte Läufe gelöscht: $n"
+
+      # Ferien, Pollen und Kinopreise sind Beiwerk: Ein Ausfall färbt den Lauf nicht rot, soll aber nicht unbemerkt bleiben.
+      - name: Hinweis auf ausgefallene Nebenquellen
+        if: always() && (steps.ferien.outcome == 'failure' || steps.pollen.outcome == 'failure' || steps.kino.outcome == 'failure')
+        run: echo "::warning::Nebenquelle ausgefallen – Ferien ${{ steps.ferien.outcome }}, Pollen ${{ steps.pollen.outcome }}, Kinopreise ${{ steps.kino.outcome }}. Die Seite zeigt dafür den bisherigen Stand."
+
+      - name: Gescheiterte Abrufe melden
+        if: always() && (steps.events.outcome == 'failure' || steps.privat.outcome == 'failure' || steps.kalender.outcome == 'failure' || steps.speichern.outputs.fehler == '1')
+        run: |
+          echo "::error::Nicht alles hat geklappt – Events: ${{ steps.events.outcome }}, Dienste: ${{ steps.privat.outcome }}, Termine: ${{ steps.kalender.outcome }}, Speichern im Projekt: ${{ steps.speichern.outputs.fehler == '1' && 'gescheitert' || 'ok' }}. Die Seite zeigt den bisherigen Stand."
+          exit 1

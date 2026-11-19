@@ -1,0 +1,28 @@
+name = "katzingers-daten"
+main = "index.js"
+compatibility_date = "2025-06-01"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "DATEN"
+class_name = "DatenState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["DatenState"]
+
+# Zeitgeber für den Datenabgleich: stündlich um :23 (Weltzeit 04–22 Uhr), siehe scheduled() in index.js
+[triggers]
+crons = ["23 4-22 * * *"]
+
+# Meldungen aufbewahren (bei Cloudflare unter „Logs“): eigene Meldungen und Fehler, z. B. „Anstoß gescheitert (401)“.
+# Die einzelnen Anfragen (Adresse, Kopfzeilen) werden bewusst NICHT mitgeschrieben.
+[observability]
+enabled = true
+
+[observability.logs]
+enabled = true
+invocation_logs = false
+
+[vars]
+ANSTOSS_REPO = "sisko2891/Muenchen-radar"
