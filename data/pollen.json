@@ -1,37 +1,37 @@
 {
- "stand": "2026-11-21T08:24:41Z",
- "ausgabe": "2026-11-20 11:00 Uhr",
+ "stand": "2026-11-21T11:24:39Z",
+ "ausgabe": "2026-11-21 11:00 Uhr",
  "region": "Allgäu/Oberbayern/Bay. Wald",
  "tage": {
-  "2026-11-20": {
-   "Hasel": 0,
-   "Beifuß": 0,
-   "Birke": 0,
-   "Gräser": 0,
-   "Ambrosia": 0,
-   "Esche": 0,
-   "Roggen": 0,
-   "Erle": 0
-  },
   "2026-11-21": {
-   "Hasel": 0,
-   "Beifuß": 0,
-   "Birke": 0,
-   "Gräser": 0,
-   "Ambrosia": 0,
    "Esche": 0,
    "Roggen": 0,
-   "Erle": 0
+   "Beifuß": 0,
+   "Gräser": 0,
+   "Erle": 0,
+   "Birke": 0,
+   "Ambrosia": 0,
+   "Hasel": 0
   },
   "2026-11-22": {
-   "Hasel": 0,
-   "Beifuß": 0,
-   "Birke": 0,
-   "Gräser": 0,
-   "Ambrosia": 0,
    "Esche": 0,
    "Roggen": 0,
-   "Erle": 0
+   "Beifuß": 0,
+   "Gräser": 0,
+   "Erle": 0,
+   "Birke": 0,
+   "Ambrosia": 0,
+   "Hasel": 0
+  },
+  "2026-11-23": {
+   "Esche": 0,
+   "Roggen": 0,
+   "Beifuß": 0,
+   "Gräser": 0,
+   "Erle": 0,
+   "Birke": 0,
+   "Ambrosia": 0,
+   "Hasel": 0
   }
  }
 }
