@@ -1,0 +1,8 @@
+{
+  "name": "katzingers-werkzeug",
+  "private": true,
+  "description": "Fest eingefrorenes Werkzeug zum Veröffentlichen der Cloudflare-Dienste",
+  "devDependencies": {
+    "wrangler": "3.114.17"
+  }
+}

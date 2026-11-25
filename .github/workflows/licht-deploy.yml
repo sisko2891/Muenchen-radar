@@ -1,0 +1,80 @@
+name: Licht-Dienst veröffentlichen (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+    paths: ["licht/**", "werkzeug/**", ".github/workflows/licht-deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: licht-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Secrets prüfen (ohne Inhalte)
+        id: check
+        env:
+          LICHT_PASS: ${{ secrets.LICHT_PASS }}
+          HUE_CLIENT_ID: ${{ secrets.HUE_CLIENT_ID }}
+          HUE_CLIENT_SECRET: ${{ secrets.HUE_CLIENT_SECRET }}
+        run: werkzeug/pruefen.sh LICHT_PASS 10 HUE_CLIENT_ID HUE_CLIENT_SECRET
+      - name: Werkzeug installieren (fest eingefrorene Versionen, ohne Installationsskripte)
+        if: steps.check.outputs.go == '1'
+        working-directory: werkzeug
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Dienst veröffentlichen
+        if: steps.check.outputs.go == '1'
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACC_RAW: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          LICHT_PASS: ${{ secrets.LICHT_PASS }}
+          HUE_CLIENT_ID: ${{ secrets.HUE_CLIENT_ID }}
+          HUE_CLIENT_SECRET: ${{ secrets.HUE_CLIENT_SECRET }}
+        run: werkzeug/veroeffentlichen.sh licht katzingers-licht LICHT_PASS HUE_CLIENT_ID HUE_CLIENT_SECRET
+      - name: Gäste-WLAN hinterlegen oder entfernen
+        if: steps.check.outputs.go == '1'
+        working-directory: licht
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACC_RAW: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WLAN_NAME: ${{ secrets.WLAN_NAME }}
+          WLAN_PASS: ${{ secrets.WLAN_PASS }}
+        run: |
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CF_ACC_RAW" | tr -d '[:space:]')" WRANGLER_SEND_METRICS=false
+          if [ -n "$WLAN_NAME" ] && [ -n "$WLAN_PASS" ]; then
+            for n in WLAN_NAME WLAN_PASS; do printf '%s' "${!n}" | ../werkzeug/node_modules/.bin/wrangler secret put "$n" > /dev/null; echo "$n gesetzt"; done
+          else
+            # Secrets fehlen in GitHub: früher hinterlegte WLAN-Daten auch beim Dienst entfernen, sonst gäbe er sie weiter heraus
+            for n in WLAN_NAME WLAN_PASS; do
+              code=$(curl -sS -m 30 -o /dev/null -w '%{http_code}' -X DELETE -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
+                "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/workers/scripts/katzingers-licht/secrets/$n" || echo 000)
+              case "$code" in 200) echo "$n beim Dienst entfernt";; 404) echo "$n war nicht hinterlegt";; *) echo "::warning::$n konnte nicht entfernt werden (Antwort $code)";; esac
+            done
+            echo "Gäste-WLAN nicht eingerichtet – der WLAN-Knopf bleibt ausgeblendet"
+          fi
+      - name: Adresse des Dienstes für die Seite speichern
+        if: steps.check.outputs.go == '1'
+        id: adresse
+        run: |
+          echo "{\"url\":\"${{ steps.deploy.outputs.url }}\"}" > data/licht.json
+          git add data/licht.json
+          git diff --cached --quiet || echo "neu=1" >> "$GITHUB_OUTPUT"
+          werkzeug/git-speichern.sh "Licht-Dienst: Adresse aktualisiert" || { echo "::error::Adresse konnte nicht gespeichert werden"; exit 1; }
+      - name: Seite neu veröffentlichen
+        if: steps.adresse.outputs.neu == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update.yml --ref main

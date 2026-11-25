@@ -1,0 +1,99 @@
+name: Geschützten Datenspeicher veröffentlichen (Cloudflare)
+
+# Dienste, Termine und das Bild des Hausherrn liegen nicht im öffentlichen Projekt, sondern in diesem Dienst.
+# Schreiben darf nur der Datenabgleich: Sein Schlüssel wird aus dem Cloudflare-Token abgeleitet (kein weiteres Secret nötig),
+# der Dienst kennt davon nur den Hash.
+
+on:
+  push:
+    branches: [main]
+    paths: ["daten/**", "werkzeug/**", ".github/workflows/daten-deploy.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: daten-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Secrets prüfen (ohne Inhalte)
+        id: check
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACC_RAW: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: werkzeug/pruefen.sh CLOUDFLARE_API_TOKEN 20 CF_ACC_RAW
+      - name: Werkzeug installieren (fest eingefrorene Versionen, ohne Installationsskripte)
+        if: steps.check.outputs.go == '1'
+        working-directory: werkzeug
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Dienst veröffentlichen
+        if: steps.check.outputs.go == '1'
+        id: deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACC_RAW: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # Schreibschlüssel ableiten; beim Dienst wird nur dessen Hash hinterlegt
+          KEY=$(printf 'katzingers-daten/upload/v1:%s' "$CLOUDFLARE_API_TOKEN" | sha256sum | cut -d' ' -f1)
+          echo "::add-mask::$KEY"
+          export UPLOAD_HASH=$(printf '%s' "$KEY" | sha256sum | cut -d' ' -f1)
+          echo "::add-mask::$UPLOAD_HASH"
+          werkzeug/veroeffentlichen.sh daten katzingers-daten UPLOAD_HASH
+          # Kontrolle: Der Dienst muss den Schreibschlüssel annehmen (sonst könnte der Abgleich nichts ablegen)
+          URL=$(grep -oE 'https://[a-z0-9.-]+' "$GITHUB_OUTPUT" | tail -1)
+          for i in 1 2 3 4 5 6; do
+            code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' -H "X-Upload-Key: $KEY" "$URL/stand/privat" || echo 000)
+            [ "$code" = 200 ] && break
+            sleep 5
+          done
+          [ "$code" = 200 ] || { echo "::error::Der Speicher nimmt den Schreibschlüssel nicht an (Antwort $code)"; exit 1; }
+          echo "Speicher erreichbar, Schreibschlüssel angenommen"
+      - name: Zugangsschlüssel für den Zeitgeber hinterlegen
+        if: steps.check.outputs.go == '1'
+        working-directory: daten
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACC_RAW: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANSTOSS_TOKEN: ${{ secrets.ANSTOSS_TOKEN }}
+        run: |
+          export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "$CF_ACC_RAW" | tr -d '[:space:]')" WRANGLER_SEND_METRICS=false
+          # versehentlich mitkopierte Leerzeichen/Zeilenumbrüche entfernen
+          ROH_LAENGE=${#ANSTOSS_TOKEN}
+          ANSTOSS_TOKEN="$(printf '%s' "$ANSTOSS_TOKEN" | tr -d '[:space:]')"
+          if [ -n "$ANSTOSS_TOKEN" ]; then
+            # Hinweise zur Fehlersuche, ohne den Schlüssel zu zeigen: Länge und Art
+            case "$ANSTOSS_TOKEN" in github_pat_*) ART="fine-grained (github_pat_…)";; ghp_*) ART="klassisch (ghp_…)";; *) ART="unbekannt – sieht nicht wie ein GitHub-Schlüssel aus";; esac
+            echo "Schlüssel: ${#ANSTOSS_TOKEN} Zeichen (eingetragen: $ROH_LAENGE), Art: $ART"
+            # Kontrolle ohne Nebenwirkung: Darf der Schlüssel die Abläufe dieses Projekts sehen?
+            code=$(curl -sS -m 20 -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $ANSTOSS_TOKEN" -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/update.yml" || echo 000)
+            [ "$code" = 200 ] || echo "::warning::ANSTOSS_TOKEN wird von GitHub nicht angenommen (Antwort $code) – Berechtigung „Actions: Read and write“ für dieses Projekt prüfen"
+            printf '%s' "$ANSTOSS_TOKEN" | ../werkzeug/node_modules/.bin/wrangler secret put ANSTOSS_TOKEN > /dev/null
+            echo "ANSTOSS_TOKEN gesetzt (Prüfung bei GitHub: $code)"
+          else
+            echo "::warning::ANSTOSS_TOKEN fehlt – der Zeitgeber kann den Datenabgleich nicht anstoßen"
+          fi
+      - name: Adresse des Dienstes für die Seite speichern
+        if: steps.check.outputs.go == '1'
+        id: adresse
+        run: |
+          echo "{\"url\":\"${{ steps.deploy.outputs.url }}\"}" > data/daten.json
+          git add data/daten.json
+          git diff --cached --quiet || echo "neu=1" >> "$GITHUB_OUTPUT"
+          werkzeug/git-speichern.sh "Datenspeicher: Adresse aktualisiert" || { echo "::error::Adresse konnte nicht gespeichert werden"; exit 1; }
+      - name: Datenabgleich starten (nur bei neuer Adresse des Dienstes)
+        if: steps.adresse.outputs.neu == '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run update.yml --ref main
