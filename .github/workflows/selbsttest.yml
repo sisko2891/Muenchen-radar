@@ -1,0 +1,57 @@
+name: Wöchentlicher Selbsttest
+
+# Prüft einmal pro Woche von außen, ob Seite, Datenabgleich, Zeitgeber, S4-Zähler und alle Dienste (Speicher, Heizung,
+# Licht, Arbeitsweg) laufen, und legt das Ergebnis in data/selbsttest.json ab (öffentlich, nur neutrale Texte). Die Seite
+# zeigt bei einem Fehler – oder wenn der letzte Test älter als 9 Tage ist – einen Hinweis an der Wand. Veröffentlicht wird
+# die Datei mit dem nächsten regulären Datenabgleich.
+# Angestoßen montags vom Zeitgeber bei Cloudflare (Dienst daten/); GitHubs eigener Zeitplan ist nur die Reserve – der
+# zweite Anstoß desselben Tages tut nichts (Test jünger als 5 Tage).
+
+on:
+  schedule:
+    - cron: "47 9 * * 1"
+  workflow_dispatch:
+    inputs:
+      anlass:
+        description: "hand = jetzt prüfen · zeitplan = nur, wenn der letzte Test älter als 5 Tage ist"
+        default: hand
+
+permissions:
+  contents: read
+
+concurrency:
+  group: selbsttest
+  cancel-in-progress: false
+
+jobs:
+  pruefen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Seite und Dienste prüfen
+        id: test
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEIZUNG_PASS: ${{ secrets.HEIZUNG_PASS }}
+          LICHT_PASS: ${{ secrets.LICHT_PASS }}
+          WEG_PASS: ${{ secrets.WEG_PASS }}
+          SELBSTTEST_ANLASS: ${{ (github.event_name == 'schedule' || inputs.anlass == 'zeitplan') && 'zeitplan' || 'hand' }}
+        run: python3 scripts/selbsttest.py
+      - name: Ergebnis speichern
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add data/selbsttest.json
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0); echo "::add-mask::$AUTH"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
+          werkzeug/git-speichern.sh "Selbsttest" || { echo "::error::Ergebnis konnte nicht gespeichert werden"; exit 1; }
+      - name: Ergebnis bewerten
+        run: |
+          python3 -c "import json,sys; sys.exit(0 if json.load(open('data/selbsttest.json')).get('ok') else 1)" \
+            || { echo "::error::Selbsttest hat Fehler gefunden (siehe oben) – die Seite zeigt einen Hinweis"; exit 1; }

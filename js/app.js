@@ -633,6 +633,19 @@ function showFenster(){
   if(typeof nightRefresh==="function")nightRefresh();
 }
 $("#pill-fenster").onclick=()=>{store.set("rechts","heat");applyRSwitch();loadHeat();};
+/* ---------- Wöchentlicher Selbsttest (Ablauf „Wöchentlicher Selbsttest“ → data/selbsttest.json, öffentlich und neutral) ----------
+   Ein Hinweis erscheint nur, wenn etwas nicht stimmt oder der letzte Test älter als 9 Tage ist; Antippen nennt die Punkte. */
+let selbst=null;
+const selbstFehler=()=>(selbst&&Array.isArray(selbst.punkte)?selbst.punkte:[]).filter(x=>x&&x.ok===false&&typeof x.text==="string").map(x=>x.text.slice(0,120)).slice(0,10);
+function showSelbst(){
+  const p=$("#pill-selbst"), t=Date.parse(selbst?.t), f=selbstFehler(), alt=Number.isFinite(t)&&Date.now()-t>9*864e5;
+  p.hidden=!selbst||!(f.length||alt);
+  if(!p.hidden)setPill(p,f.length?"bad":"warn",f.length?`Selbsttest: ${f.length} ${f.length===1?"Problem":"Probleme"}`:"Selbsttest überfällig");
+}
+async function loadSelbst(){try{const d=await getJSON("data/selbsttest.json");selbst=d&&typeof d==="object"?d:null;}catch{selbst=null;}showSelbst();}
+$("#pill-selbst").onclick=()=>{const f=selbstFehler();
+  toast(f.length?f.join(" · "):"Der letzte Selbsttest ist älter als 9 Tage – Ablauf „Wöchentlicher Selbsttest“ bei GitHub prüfen.");};
+setTimeout(loadSelbst,4000);setInterval(()=>{if(!document.hidden)loadSelbst();else showSelbst();},6*3600e3);
 setInterval(showFenster,60000);
 function renderHeat(){
   showFenster();

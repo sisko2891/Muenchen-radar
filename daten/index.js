@@ -96,12 +96,20 @@ export default {
       return;
     }
     if (!env.ANSTOSS_TOKEN || !/^[\w.-]+\/[\w.-]+$/.test(env.ANSTOSS_REPO || "")) { console.log("Anstoß nicht eingerichtet"); return; }
-    const r = await fetch(`https://api.github.com/repos/${env.ANSTOSS_REPO}/actions/workflows/update.yml/dispatches`, {
+    const anstossen = ablauf => fetch(`https://api.github.com/repos/${env.ANSTOSS_REPO}/actions/workflows/${ablauf}/dispatches`, {
       method: "POST",
       headers: { Authorization: "Bearer " + env.ANSTOSS_TOKEN, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "katzingers-castle-zeitgeber", "Content-Type": "application/json" },
       body: JSON.stringify({ ref: "main", inputs: { anlass: "zeitplan" } }),
     });
+    // montags (Weltzeit 9:23) zusätzlich den wöchentlichen Selbsttest – GitHubs eigener Zeitplan dafür ist nur die Reserve.
+    // Ein Fehler hier hält den Datenabgleich nicht auf (die Seite meldet einen überfälligen Selbsttest ohnehin).
+    const jetzt = new Date(Number.isFinite(event.scheduledTime) ? event.scheduledTime : Date.now());
+    if (jetzt.getUTCDay() === 1 && jetzt.getUTCHours() === 9) {
+      try { const t = await anstossen("selbsttest.yml"); console.log(t.ok ? "Selbsttest angestoßen" : `Selbsttest-Anstoß gescheitert (${t.status})`); }
+      catch { console.log("Selbsttest-Anstoß gescheitert"); }
+    }
+    const r = await anstossen("update.yml");
     // Lehnt GitHub ab (Schlüssel abgelaufen, Störung), endet der Lauf als Fehler – so steht er bei Cloudflare als gescheitert im Verlauf
     if (!r.ok) throw new Error(`Anstoß gescheitert (${r.status})`);
     console.log("Datenabgleich angestoßen");
