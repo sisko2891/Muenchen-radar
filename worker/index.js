@@ -92,9 +92,13 @@ class Bremse {
     if (r.sperre > Date.now() && !r.ok[name + "|" + ip] && !(ger && r.ger?.[name + "|" + ger])) return r.sperre;
     return 0;
   }
-  async fehlversuch(r, ip) {
-    const now = Date.now();
-    r.ip[ip] = { n: (r.ip[ip]?.n || 0) + 1, t: r.ip[ip]?.t || now };
+  // spur: Kurzmarke des falschen Zugangs. Dasselbe falsche Passwort noch einmal (mehrere Geräte mit dem alten Passwort nach
+  // einem Wechsel, gleichzeitige Anfragen eines Geräts) ist kein neuer Rateversuch: zählt je Anschluss nur einmal
+  async fehlversuch(r, ip, spur = "") {
+    const now = Date.now(), alt = r.ip[ip];
+    if (spur && alt?.h?.includes(spur)) return Math.max(0, MAX_FAILS_IP - alt.n);   // kein Schreibvorgang
+    const h = [...(alt?.h || []), spur].filter(Boolean).slice(-MAX_FAILS_IP);
+    r.ip[ip] = { n: (alt?.n || 0) + 1, t: alt?.t || now, ...(h.length ? { h } : {}) };
     r.alle.n++; r.tag.n++;
     if (r.alle.n >= MAX_FAILS_ALL) r.sperre = Math.max(r.sperre, now + LOCK);
     if (r.tag.n >= MAX_FAILS_TAG) r.sperre = Math.max(r.sperre, r.tag.t + TAG_WINDOW);   // auch über viele Adressen verteilt nicht mehr als 100 Versuche am Tag
@@ -122,7 +126,7 @@ class Bremse {
       const r = await this.laden(), ger = geraet(req), bis = this.gesperrt(r, ip, ger, name);
       if (bis) return { status: 429, body: { error: "gesperrt", bis } };
       if (soll && await gleich(given, soll)) { await this.treffer(r, ip, ger, name); return null; }
-      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip) } };
+      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip, await zugangMarke(String(soll) + "\n" + given)) } };
     });
   }
 }
@@ -171,7 +175,12 @@ export class TadoState {
     if (!dev || dev.until < Date.now()) return { fertig: false, abgelaufen: true };
     const q = new URLSearchParams({ client_id: CLIENT, device_code: dev.code, grant_type: "urn:ietf:params:oauth:grant-type:device_code" });
     const r = await fetch(`${LOGIN}/token?${q}`, { method: "POST" });
-    if (!r.ok) return { fertig: false };
+    if (!r.ok) {
+      // abgelehnt oder Code abgelaufen: sofort melden, statt bis zu 5 min weiter nachzufragen
+      const b = await r.json().catch(() => ({}));
+      if (b.error === "access_denied" || b.error === "expired_token") { await this.s.delete("device"); return { fertig: false, abgelaufen: true }; }
+      return { fertig: false };
+    }
     const t = await r.json();
     await this.s.put("refresh", t.refresh_token);
     await this.s.put("access", { t: t.access_token, until: Date.now() + (t.expires_in - 60) * 1000 });
@@ -221,12 +230,18 @@ export class TadoState {
     }
     throw Object.assign(new Error("tado-Anmeldung gestört"), { code: 502 });
   }
-  async api(method, path, body) {
+  async api(method, path, body, nochmal = true) {
     const tok = await this.token();
     const r = await fetch(API + path, {
       method, headers: { Authorization: "Bearer " + tok, "Content-Type": "application/json" },
       body: body ? JSON.stringify(body) : undefined,
     });
+    // tado lehnt das gemerkte Token ab (z. B. vorzeitig ungültig): verwerfen und einmal mit frischem Token wiederholen –
+    // die Erneuerung liefert bei abgelaufener Anmeldung selbst „neu verbinden“ (409)
+    if (r.status === 401 && nochmal) {
+      if ((await this.s.get("access"))?.t === tok) await this.s.delete("access");
+      return this.api(method, path, body, false);
+    }
     if (r.status === 429) throw Object.assign(new Error("tado-Abfragegrenze erreicht"), { code: 429 });
     if (!r.ok) {
       // Begründung von tado mitliefern (z. B. {"errors":[{"code":"...","title":"..."}]})

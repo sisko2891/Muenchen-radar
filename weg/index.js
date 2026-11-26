@@ -88,9 +88,13 @@ class Bremse {
     if (r.sperre > Date.now() && !r.ok[name + "|" + ip] && !(ger && r.ger?.[name + "|" + ger])) return r.sperre;
     return 0;
   }
-  async fehlversuch(r, ip) {
-    const now = Date.now();
-    r.ip[ip] = { n: (r.ip[ip]?.n || 0) + 1, t: r.ip[ip]?.t || now };
+  // spur: Kurzmarke des falschen Zugangs. Dasselbe falsche Passwort noch einmal (mehrere Geräte mit dem alten Passwort nach
+  // einem Wechsel, gleichzeitige Anfragen eines Geräts) ist kein neuer Rateversuch: zählt je Anschluss nur einmal
+  async fehlversuch(r, ip, spur = "") {
+    const now = Date.now(), alt = r.ip[ip];
+    if (spur && alt?.h?.includes(spur)) return Math.max(0, MAX_FAILS_IP - alt.n);   // kein Schreibvorgang
+    const h = [...(alt?.h || []), spur].filter(Boolean).slice(-MAX_FAILS_IP);
+    r.ip[ip] = { n: (alt?.n || 0) + 1, t: alt?.t || now, ...(h.length ? { h } : {}) };
     r.alle.n++; r.tag.n++;
     if (r.alle.n >= MAX_FAILS_ALL) r.sperre = Math.max(r.sperre, now + LOCK);
     if (r.tag.n >= MAX_FAILS_TAG) r.sperre = Math.max(r.sperre, r.tag.t + TAG_WINDOW);   // auch über viele Adressen verteilt nicht mehr als 100 Versuche am Tag
@@ -118,7 +122,7 @@ class Bremse {
       const r = await this.laden(), ger = geraet(req), bis = this.gesperrt(r, ip, ger, name);
       if (bis) return { status: 429, body: { error: "gesperrt", bis } };
       if (soll && await gleich(given, soll)) { await this.treffer(r, ip, ger, name); return null; }
-      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip) } };
+      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip, await zugangMarke(String(soll) + "\n" + given)) } };
     });
   }
 }
@@ -164,6 +168,9 @@ export class WegState {
     if (!key || !a || !b) throw Object.assign(new Error("Arbeitsweg nicht eingerichtet"), { code: 501 });
     const t = new Date(ankunft || NaN);
     if (isNaN(t)) throw Object.assign(new Error("Ankunftszeit fehlt"), { code: 400 });
+    // nur bevorstehende Ankünfte (die Seite fragt den nächsten Dienst ab) – sonst kostete jede beliebige Minute einen TomTom-Abruf
+    const d = t.getTime() - Date.now();
+    if (d < -5 * 60e3 || d > 8 * 864e5) throw Object.assign(new Error("Ankunftszeit außerhalb 0–8 Tage"), { code: 400 });
     const ck = t.toISOString().slice(0, 16);
     const cache = (await this.s.get("vk")) || {};
     for (const k of Object.keys(cache)) if (cache[k].until < Date.now()) delete cache[k];

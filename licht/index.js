@@ -38,8 +38,11 @@ export default {
 const err = (msg, code) => Object.assign(new Error(msg), { code });
 // Notiz als Formular: aktion, text, von, optional id und gilt (heute | morgen | leer = bis erledigt)
 function formNotiz(roh) {
-  const f = new URLSearchParams(String(roh).slice(0, 4000)), o = {};
-  for (const k of ["aktion", "text", "von", "id"]) if (f.has(k)) o[k] = f.get(k);
+  // erst zerlegen, dann je Feld begrenzen (Kürzen des rohen Texts schnitte spätere Felder wie „gilt“ still ab)
+  const t = String(roh);
+  if (t.length > 20000) throw err("Formular zu groß", 413);
+  const f = new URLSearchParams(t), o = {};
+  for (const k of ["aktion", "text", "von", "id"]) if (f.has(k)) o[k] = f.get(k).slice(0, 1000);
   if (!o.aktion && o.text != null) o.aktion = "neu";
   if (o.von) o.von = o.von.trim().toUpperCase();
   const g = (f.get("gilt") || "").trim().toLowerCase();
@@ -114,9 +117,13 @@ class Bremse {
     if (r.sperre > Date.now() && !r.ok[name + "|" + ip] && !(ger && r.ger?.[name + "|" + ger])) return r.sperre;
     return 0;
   }
-  async fehlversuch(r, ip) {
-    const now = Date.now();
-    r.ip[ip] = { n: (r.ip[ip]?.n || 0) + 1, t: r.ip[ip]?.t || now };
+  // spur: Kurzmarke des falschen Zugangs. Dasselbe falsche Passwort noch einmal (mehrere Geräte mit dem alten Passwort nach
+  // einem Wechsel, gleichzeitige Anfragen eines Geräts) ist kein neuer Rateversuch: zählt je Anschluss nur einmal
+  async fehlversuch(r, ip, spur = "") {
+    const now = Date.now(), alt = r.ip[ip];
+    if (spur && alt?.h?.includes(spur)) return Math.max(0, MAX_FAILS_IP - alt.n);   // kein Schreibvorgang
+    const h = [...(alt?.h || []), spur].filter(Boolean).slice(-MAX_FAILS_IP);
+    r.ip[ip] = { n: (alt?.n || 0) + 1, t: alt?.t || now, ...(h.length ? { h } : {}) };
     r.alle.n++; r.tag.n++;
     if (r.alle.n >= MAX_FAILS_ALL) r.sperre = Math.max(r.sperre, now + LOCK);
     if (r.tag.n >= MAX_FAILS_TAG) r.sperre = Math.max(r.sperre, r.tag.t + TAG_WINDOW);   // auch über viele Adressen verteilt nicht mehr als 100 Versuche am Tag
@@ -144,7 +151,7 @@ class Bremse {
       const r = await this.laden(), ger = geraet(req), bis = this.gesperrt(r, ip, ger, name);
       if (bis) return { status: 429, body: { error: "gesperrt", bis } };
       if (soll && await gleich(given, soll)) { await this.treffer(r, ip, ger, name); return null; }
-      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip) } };
+      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip, await zugangMarke(String(soll) + "\n" + given)) } };
     });
   }
 }
@@ -176,6 +183,7 @@ export class LichtState {
         if (!fd) throw err("Formular nicht lesbar", 400);
         const q = new URLSearchParams();
         for (const [k, v] of fd) if (typeof v === "string") q.append(k, v.slice(0, 1000));
+        if (!q.has("text") && !q.has("aktion")) throw err("Text fehlt (Feld „text“ als Text, nicht als Datei)", 400);
         body = formNotiz(q.toString());
       } else body = (await req.json().catch(() => null)) || {};
       switch (url.pathname) {
@@ -272,7 +280,8 @@ export class LichtState {
     });
     if (r.status === 429) throw err("Hue: zu viele Anfragen, gleich wieder", 429);
     // Zugang nicht mehr gültig: einmal mit frischem Token versuchen, sonst „neu verbinden“ melden (statt dauerhaft Fehler 502)
-    if (r.status === 401 && nochmal) { await this.s.delete("access"); return this.clip(method, path, body, false); }
+    // nur das Token verwerfen, mit dem die Ablehnung kam – ein gerade von einer anderen Anfrage erneuertes bleibt
+    if (r.status === 401 && nochmal) { if ((await this.s.get("access"))?.t === tok) await this.s.delete("access"); return this.clip(method, path, body, false); }
     if (r.status === 401 || (r.status === 403 && method === "GET")) throw err("Hue-Zugang ungültig – bitte neu verbinden", 409);
     const d = await r.json().catch(() => ({}));
     if (!r.ok) throw err(`Hue-Fehler ${r.status}${d.errors?.[0]?.description ? " – " + d.errors[0].description : ""}`, 502);

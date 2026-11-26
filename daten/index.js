@@ -67,9 +67,12 @@ export default {
     const pfad = new URL(req.url).pathname;
     if (pfad === "/s4" && req.method === "GET") {   // Statistik für die Seite: ohne Schlüssel, es sind öffentliche Fahrplandaten
       if (!s4Merk || Date.now() - s4Merk.t > 60e3) {
-        const r = await env.DATEN.get(env.DATEN.idFromName("daten")).fetch(new Request("https://intern/s4/lesen"));
-        if (!r.ok) return json(req, 502, { error: "Zähler gerade nicht erreichbar" });
-        s4Merk = { t: Date.now(), v: await r.json() };
+        // Stört der Speicher-Dienst kurz, bleibt die letzte Antwort stehen (die Seite zeigt ohnehin, wie alt der Stand ist)
+        try {
+          const r = await env.DATEN.get(env.DATEN.idFromName("daten")).fetch(new Request("https://intern/s4/lesen"));
+          if (!r.ok) throw new Error(String(r.status));
+          s4Merk = { t: Date.now(), v: await r.json() };
+        } catch { if (!s4Merk) return json(req, 502, { error: "Zähler gerade nicht erreichbar" }); }
       }
       return json(req, 200, s4Merk.v);
     }
@@ -79,15 +82,20 @@ export default {
       const roh = req.headers.get("Content-Length");
       if (roh !== null && roh !== "" && !(Number(roh) >= 0 && Number(roh) <= 500)) return json(req, 413, { error: "zu groß" });
     }
-    // Anfragen ganz ohne Schlüssel sofort abweisen – sie wecken den Speicher-Dienst gar nicht erst
-    if (!req.headers.get("X-Castle-Key") && !req.headers.get("X-Upload-Key")) return json(req, 401, { error: "Zugang fehlt" });
+    // Anfragen ganz ohne (oder mit unsinnigem) Schlüssel und unbekannte Wege sofort abweisen – sie wecken den Speicher-Dienst
+    // gar nicht erst (dort wird dasselbe noch einmal geprüft)
+    const ck = req.headers.get("X-Castle-Key"), uk = req.headers.get("X-Upload-Key");
+    if (!ck && !uk) return json(req, 401, { error: "Zugang fehlt" });
+    if (!uk && !istHex64(ck.toLowerCase())) return json(req, 401, { error: "Zugang fehlt" });
+    if (!/^\/(blob|zugang|stand|pause)\/[a-z]{1,12}$/.test(pfad)) return json(req, 404, { error: "unbekannt" });
     return env.DATEN.get(env.DATEN.idFromName("daten")).fetch(req);
   },
   // Zeitgeber (Zeitplan in wrangler.toml): startet den Datenabgleich bei GitHub. Der Ablauf entscheidet selbst, ob Arbeit
   // ansteht (Daten älter als ca. 2,5 h); „anlass: zeitplan“ unterscheidet den Anstoß von einem Start von Hand.
   async scheduled(event, env, ctx) {
     if (event.cron === "*/5 * * * *") {             // S4-Zähler
-      const r = await fetch(S4_URL, { headers: { "User-Agent": "Mozilla/5.0 (katzingers-castle S4-Zaehler)", Accept: "application/json" } });
+      // mit Zeitgrenze: ein hängender Abruf darf nicht in den nächsten Lauf hineinreichen
+      const r = await fetch(S4_URL, { headers: { "User-Agent": "Mozilla/5.0 (katzingers-castle S4-Zaehler)", Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
       if (!r.ok) throw new Error(`S4-Abruf gescheitert (${r.status})`);
       const liste = await r.json();
       if (!Array.isArray(liste)) throw new Error("S4-Abruf: unerwartete Antwort");
@@ -101,6 +109,7 @@ export default {
       headers: { Authorization: "Bearer " + env.ANSTOSS_TOKEN, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28",
         "User-Agent": "katzingers-castle-zeitgeber", "Content-Type": "application/json" },
       body: JSON.stringify({ ref: "main", inputs: { anlass: "zeitplan" } }),
+      signal: AbortSignal.timeout(20000),
     });
     // montags (Weltzeit 9:23) zusätzlich den wöchentlichen Selbsttest – GitHubs eigener Zeitplan dafür ist nur die Reserve.
     // Ein Fehler hier hält den Datenabgleich nicht auf (die Seite meldet einen überfälligen Selbsttest ohnehin).
@@ -183,9 +192,13 @@ class Bremse {
     if (r.sperre > Date.now() && !r.ok[name + "|" + ip] && !(ger && r.ger?.[name + "|" + ger])) return r.sperre;
     return 0;
   }
-  async fehlversuch(r, ip) {
-    const now = Date.now();
-    r.ip[ip] = { n: (r.ip[ip]?.n || 0) + 1, t: r.ip[ip]?.t || now };
+  // spur: Kurzmarke des falschen Zugangs. Dasselbe falsche Passwort noch einmal (mehrere Geräte mit dem alten Passwort nach
+  // einem Wechsel, gleichzeitige Anfragen eines Geräts) ist kein neuer Rateversuch: zählt je Anschluss nur einmal
+  async fehlversuch(r, ip, spur = "") {
+    const now = Date.now(), alt = r.ip[ip];
+    if (spur && alt?.h?.includes(spur)) return Math.max(0, MAX_FAILS_IP - alt.n);   // kein Schreibvorgang
+    const h = [...(alt?.h || []), spur].filter(Boolean).slice(-MAX_FAILS_IP);
+    r.ip[ip] = { n: (alt?.n || 0) + 1, t: alt?.t || now, ...(h.length ? { h } : {}) };
     r.alle.n++; r.tag.n++;
     if (r.alle.n >= MAX_FAILS_ALL) r.sperre = Math.max(r.sperre, now + LOCK);
     if (r.tag.n >= MAX_FAILS_TAG) r.sperre = Math.max(r.sperre, r.tag.t + TAG_WINDOW);   // auch über viele Adressen verteilt nicht mehr als 100 Versuche am Tag
@@ -213,7 +226,7 @@ class Bremse {
       const r = await this.laden(), ger = geraet(req), bis = this.gesperrt(r, ip, ger, name);
       if (bis) return { status: 429, body: { error: "gesperrt", bis } };
       if (soll && await gleich(given, soll)) { await this.treffer(r, ip, ger, name); return null; }
-      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip) } };
+      return { status: 401, body: { error: "Passwort falsch", rest: await this.fehlversuch(r, ip, await zugangMarke(String(soll) + "\n" + given)) } };
     });
   }
 }
@@ -336,8 +349,9 @@ export class DatenState {
     s.fTage = s.fTage.filter(t => t >= fGrenze).sort();
     s.ok = now;
     schreiben.s4 = s;
-    await this.s.put(schreiben);                      // Zähler und einzelne Fahrten in einem Schritt: nie halb gespeichert
-    if (weg.length) await this.s.delete(weg);
+    // Zähler, einzelne Fahrten und Löschen in einem Schritt (ohne await dazwischen fasst der Speicher-Dienst sie zusammen)
+    const w1 = this.s.put(schreiben), w2 = weg.length ? this.s.delete(weg) : null;
+    await w1; await w2;
     return { ok: true };
   }
   // Summen für 7 Tage, 30 Tage und alles; je Zeitraum die zehn häufigsten Gründe.
@@ -416,7 +430,7 @@ export class DatenState {
       if (bis) return json(req, 429, { error: "gesperrt", bis });
       if (!b) return json(req, 404, { error: "leer" });
       if (await this.passt(b, key)) { if (frei !== "-") await this.bremse.treffer(r, ip, ger, frei); return json(req, 200, { inhalt: b.inhalt, t: b.t }); }
-      return json(req, 401, { error: "Zugang falsch", rest: await this.bremse.fehlversuch(r, ip) });
+      return json(req, 401, { error: "Zugang falsch", rest: await this.bremse.fehlversuch(r, ip, await zugangMarke(name + "\n" + key)) });
     });
   }
 
@@ -441,7 +455,7 @@ export class DatenState {
       const r = await this.bremse.laden(), ger = geraet(req), bis = this.bremse.gesperrt(r, ip, ger, frei);
       if (bis) return json(req, 429, { error: "gesperrt", bis });
       if (!b) return json(req, 404, { error: "leer" });
-      if (!(await this.passt(b, key))) return json(req, 401, { error: "Zugang falsch", rest: await this.bremse.fehlversuch(r, ip) });
+      if (!(await this.passt(b, key))) return json(req, 401, { error: "Zugang falsch", rest: await this.bremse.fehlversuch(r, ip, await zugangMarke("privat\n" + key)) });
       if (frei !== "-") await this.bremse.treffer(r, ip, ger, frei);
       if (req.method === "GET") return json(req, 200, { pause: await this.pauseStand() });
       if (text.length > 500) return json(req, 413, { error: "zu groß" });
