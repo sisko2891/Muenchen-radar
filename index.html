@@ -151,6 +151,22 @@ select.pill{appearance:none;-webkit-appearance:none;font:600 .85rem var(--f-disp
 .s4-r span{overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
 .s4-r em{font:700 .84rem var(--f-mono);font-style:normal;text-align:right}
 .s4-bar{height:8px;border-radius:4px;background:var(--line)} .s4-bar u{display:block;height:100%;border-radius:4px;background:var(--amber)}
+/* Wochenverlauf: schmale Säulen (verspätet + ausgefallen gestapelt, 2 px Abstand), leise Grundlinie, Werte der angetippten Woche darunter */
+.s4-wv-h{margin-top:20px!important}
+.s4-wv-plot{position:relative;display:flex;align-items:flex-end;gap:6px;height:110px;padding-top:18px;border-bottom:1px solid var(--line)}
+.s4-wv-max{position:absolute;top:0;left:0;font:500 .66rem var(--f-mono);color:var(--muted)}
+.s4-wv-w{position:relative;flex:1 1 0;max-width:34px;height:100%;display:flex;flex-direction:column;justify-content:flex-end;border:0;background:none;padding:0;cursor:pointer;color:var(--muted);font:inherit}
+.s4-wv-s{display:flex;flex-direction:column;justify-content:flex-end;gap:2px;height:100%}
+.s4-wv-s i{display:block;width:100%;background:var(--c);flex:none;min-height:2px}
+.s4-wv-s i:first-child{border-radius:4px 4px 0 0}
+.s4-wv-s i.s4-c-aus{background:repeating-linear-gradient(135deg,#7b8798 0 3px,#a5afbd 3px 6px)}
+.s4-wv-w small{position:absolute;left:0;right:0;bottom:-17px;font:500 .62rem var(--f-mono);text-align:center}
+.s4-wv-w.laeuft .s4-wv-s{opacity:.55}
+.s4-wv-w[aria-pressed="true"] small{color:var(--ink);font-weight:700}
+.s4-wv-leg{display:flex;flex-wrap:wrap;gap:4px 14px;margin-top:24px;font-size:.72rem;color:var(--muted)}
+.s4-wv-leg span::before{content:"";display:inline-block;width:9px;height:9px;border-radius:2px;background:var(--c);margin-right:5px;vertical-align:-1px}
+.s4-wv-leg .s4-c-aus::before{background:repeating-linear-gradient(135deg,#7b8798 0 2px,#a5afbd 2px 4px)}
+.s4-wv-t{margin:6px 0 0;font-size:.8rem;color:var(--ink)}
 .s4-f{margin-top:14px;padding-top:10px;border-top:1px solid var(--line);color:var(--muted);font-size:.74rem;line-height:1.4}
 .s4-c-ok{--c:var(--ok)} .s4-c-mg{--c:var(--amber)} .s4-c-og{--c:#e8590c} .s4-c-sp{--c:#d9480f} .s4-c-kurz{--c:var(--bad)}
 .s4-c-aus{--c:#7b8798} .s4-c-oe{--c:#b8c0cc}

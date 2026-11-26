@@ -404,6 +404,28 @@ addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#dienste").hidden){diens
    Gezählt wird im Cloudflare-Dienst daten/ (alle 5 Minuten, je Fahrt der letzte Stand vor der Abfahrt) – öffentliche
    Fahrplandaten, deshalb ohne PIN abrufbar. */
 let s4Daten=null, s4Zeit="30", s4Timer=null, s4Fehler=null, s4Geholt=0;
+let s4WvWahl=-1;   // im Wochenverlauf angetippte Woche (-1 = die neueste)
+// Verlauf je Woche (nur „Gesamt“): Säule = Anteil ab 5 min verspätet + ausgefallen, bezogen auf die Fahrten mit Echtzeit
+// (= hochgerechneter Anteil aller Fahrten der Woche). Antippen einer Säule zeigt ihre Werte darunter.
+function s4Verlauf(roh){
+  const ganz=x=>{x=+x;return Number.isFinite(x)?Math.max(0,Math.round(x)):0;};
+  const l=(Array.isArray(roh)?roh:[]).filter(w=>w&&typeof w==="object"&&/^\d{4}-\d{2}-\d{2}$/.test(w.ab||"")).slice(-12).map(w=>{
+    const n=ganz(w.n), mit=Math.min(n,ganz(w.mit)), aus=Math.min(mit,ganz(w.aus)), sp=Math.min(mit-aus,ganz(w.sp));
+    const d=new Date(w.ab+"T12:00:00Z"), dd=new Date(d.getTime()+3*864e5), j=new Date(Date.UTC(dd.getUTCFullYear(),0,4));   // Kalenderwoche nach ISO
+    const kw=1+Math.round(((dd-j)/864e5-3+((j.getUTCDay()+6)%7))/7);
+    return {ab:w.ab,kw,n,mit,sp,aus,pSp:mit?sp/mit:0,pAus:mit?aus/mit:0};});
+  if(!l.length)return "";
+  const heute=new Date(new Date().toLocaleDateString("sv-SE",{timeZone:"Europe/Berlin"})+"T12:00:00Z");
+  const mo=new Date(heute.getTime()-((heute.getUTCDay()+6)%7)*864e5).toISOString().slice(0,10);   // Montag dieser Woche
+  const top=Math.max(.5,Math.ceil(Math.max(...l.map(w=>w.pSp+w.pAus))*10-1e-9)/10);   // Skala: mindestens 50 %, in 10er-Schritten
+  const pz=x=>(x*100).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1})+" %";
+  const wahl=s4WvWahl>=0&&s4WvWahl<l.length?s4WvWahl:l.length-1, w=l[wahl], laeuft=x=>x.ab===mo;
+  const text=x=>`KW ${x.kw}${laeuft(x)?" (läuft)":""}: `+(x.mit?`${pz(x.pSp)} verspätet · ${pz(x.pAus)} ausgefallen · ${x.n.toLocaleString("de-DE")} Fahrten`:"keine Fahrten mit Echtzeit");
+  return `<h3 class="s4-wv-h">Verlauf je Woche <small>Anteil der Fahrten</small></h3>
+    <div class="s4-wv"><div class="s4-wv-plot"><span class="s4-wv-max">${Math.round(top*100)} %</span>${l.map((x,i)=>`<button type="button" class="s4-wv-w${laeuft(x)?" laeuft":""}" data-wv="${i}" aria-pressed="${i===wahl}" aria-label="${esc(text(x))}"><span class="s4-wv-s">${x.pAus?`<i class="s4-c-aus" style="height:${(x.pAus/top*100).toFixed(2)}%"></i>`:""}${x.pSp?`<i class="s4-c-sp" style="height:${(x.pSp/top*100).toFixed(2)}%"></i>`:""}</span><small>${x.kw}</small></button>`).join("")}</div>
+    <div class="s4-wv-leg"><span class="s4-c-sp">ab 5 min verspätet</span><span class="s4-c-aus">ausgefallen</span></div>
+    <p class="s4-wv-t" aria-live="polite">${esc(text(w))}</p></div>`;
+}
 // Aufteilung (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen) aus z.v: nur Fahrten, bei denen „mit Grund“ schon
 // gezählt wurde (Tage einer älteren Fassung fehlen darin) – „nicht bis Marienplatz“ und die Gründe zählen über den ganzen Zeitraum
 const S4_ZEITEN=[["7","7 Tage"],["30","30 Tage"],["alle","Gesamt"]];
@@ -453,6 +475,7 @@ function s4Zeigen(meldung){
     </div><div>
       <h3>Häufigste Verspätungsgründe <small>ab 1 min</small></h3>
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
+      ${s4Zeit==="alle"?s4Verlauf(s4Daten.wochen):""}
     </div></div>
     <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
@@ -468,6 +491,8 @@ async function s4Auf(){
 function s4Zu(){$("#s4stat").hidden=true;clearTimeout(s4Timer);}
 $("#deps").addEventListener("click",e=>{if(!e.target.closest("a,button"))s4Auf();});
 $("#s4stat").addEventListener("click",e=>{
+  const wv=e.target.closest("button[data-wv]");
+  if(wv){s4WvWahl=+wv.dataset.wv;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-wv="${s4WvWahl}"]`)?.focus();clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
   const b=e.target.closest("button[data-z]");
   if(b){s4Zeit=b.dataset.z;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-z="${s4Zeit}"]`)?.focus();   // Fokus bleibt auf der Auswahl
     clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}   // wer umschaltet, liest noch: Uhr neu starten

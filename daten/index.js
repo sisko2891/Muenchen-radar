@@ -370,7 +370,11 @@ export class DatenState {
     const vorTagen = k => new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - k * 864e5).toISOString().slice(0, 10);
     // „gezählt seit“: nach zwei Jahren wandert der Anfang mit (alte Tage sind gelöscht)
     const erster = Object.keys(s.tage).sort()[0], seit = s.seit && erster && erster > s.seit ? erster : s.seit;
-    return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) } };
+    // Verlauf je Woche (die letzten 12 mit Aufteilung, älteste zuerst): Anteile bezogen auf die Fahrten mit Echtzeit (mit) –
+    // das ist zugleich der hochgerechnete Anteil aller Fahrten der Woche (Fahrten ohne Echtzeit bekommen genau diese Verteilung)
+    const verlauf = Object.entries(wochen).filter(([ab]) => /^\d{4}-\d{2}-\d{2}$/.test(ab)).sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-12)
+      .map(([ab, w]) => ({ ab, n: w.n, mit: Math.max(0, w.n - w.oe), sp: w.og + w.mg, aus: w.aus }));
+    return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) }, wochen: verlauf };
   }
 
   // Name für Freistellungen: Ablage + Kurzmarke ihres einzigen Zugangs. Ablagen mit mehreren Zugängen (Bild: PIN und
