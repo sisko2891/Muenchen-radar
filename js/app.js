@@ -414,34 +414,47 @@ function s4Zeigen(meldung){
   const z=s4Daten.z?.[s4Zeit]||{}, n=zahl(z,"n"), kurz=Math.min(n,zahl(z,"kurz"));
   const top=(Array.isArray(z.top)?z.top:[]).filter(t=>Array.isArray(t)&&typeof t[0]==="string").slice(0,10).map(t=>[t[0],ganz(t[1])]), max=Math.max(1,...top.map(t=>t[1]));
   // (unplausible Zahlen werden gekappt, damit die Anteile zusammen nie über 100 % gehen)
-  const v=z.v&&typeof z.v==="object"?z.v:{}, vn=zahl(v,"n"), aus=Math.min(vn,zahl(v,"aus")), oe=Math.min(vn-aus,zahl(v,"oe")), mg=Math.min(vn-aus-oe,zahl(v,"mg")), og=Math.min(vn-aus-oe-mg,zahl(v,"og")), sp=mg+og, ok=vn-aus-oe-sp;
+  const v=z.v&&typeof z.v==="object"?z.v:{}, vn=zahl(v,"n"), aus=Math.min(vn,zahl(v,"aus")), oe=Math.min(vn-aus,zahl(v,"oe")), mg=Math.min(vn-aus-oe,zahl(v,"mg")), og=Math.min(vn-aus-oe-mg,zahl(v,"og"));
+  const ausSp=Math.min(aus,zahl(v,"ausSp"));   // davon „zu spät“: erst abgefahren, als laut Fahrplan schon die nächste fahren sollte
+  // Hochrechnung (z.h, vom Zähler): Fahrten ohne Echtzeit bekommen die Verteilung der Fahrten mit Echtzeit ihrer Woche.
+  // Kommazahlen, gekappt wie oben – zusammen nie mehr als die geschätzten Fahrten
+  const h=z.h&&typeof z.h==="object"?z.h:{}, kz=x=>{x=+x;return Number.isFinite(x)&&x>0?x:0;};
+  const he=Math.min(oe,ganz(h.n)), hAus=Math.min(he,kz(h.aus)), hMg=Math.min(he-hAus,kz(h.mg)), hOg=Math.min(he-hAus-hMg,kz(h.og));
+  const hAusSp=Math.min(hAus,kz(h.ausSp)), AUS=aus+hAus, AUSSP=ausSp+hAusSp, MG=mg+hMg, OG=og+hOg, SP=MG+OG, OE=oe-he, OK=Math.max(0,vn-AUS-SP-OE);
+  const minMg=zahl(v,"mgMin")+(hMg?kz(h.mgMin):0), minOg=zahl(v,"ogMin")+(hOg?kz(h.ogMin):0);
+  // ganze Zahlen für die Anzeige, die zusammen genau die gezählten Fahrten ergeben (größte Reste zuerst)
+  const [rOk,rMg,rOg,rAus,rOe]=(()=>{const w=[OK,MG,OG,AUS,OE].map(x=>Math.max(0,x)),g=w.map(Math.floor);let rest=vn-g.reduce((a,b)=>a+b,0);
+    w.map((x,i)=>[x-g[i],i]).sort((a,b)=>b[0]-a[0]).forEach(([,i])=>{if(rest>0){g[i]++;rest--;}});return g;})();
+  const rSp=rMg+rOg, ca=he?"≈ ":"", rAusSp=Math.min(rAus,Math.round(AUSSP));
   const tagD=t=>/^\d{4}-\d{2}-\d{2}$/.test(t||"")?t.split("-").reverse().join("."):"";
   const seit=tagD(s4Daten.seit), alt=!s4Daten.stand||Date.now()-s4Daten.stand>30*60000;
   const fz=x=>x.toLocaleString("de-DE"), proz=(a,b)=>a&&a/b<.0005?"<0,1":(a/b*100).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
   const gross=(a,b)=>b?`${proz(a,b)}<small>%</small>`:"–", klein=(a,b)=>b?proz(a,b)+" %":"–", breite=(a,b)=>b?(a/b*100).toFixed(2)+"%":"0";
   const schnitt=(m,k)=>k?`Ø +${Math.round(m/k)} min`:"";
-  const zeilen=[["ok","pünktlich","unter 5 min",ok],["mg","ab 5 min, mit Grund",schnitt(zahl(v,"mgMin"),mg),mg],["og","ab 5 min, ohne Grund",schnitt(zahl(v,"ogMin"),og),og],["aus","ausgefallen","",aus]];
-  if(oe)zeilen.push(["oe","ohne Echtzeit","Verspätung unbekannt",oe]);
+  // [Art, Bezeichnung, Zusatz, angezeigte Zahl, Anteil (mit Kommastellen)]
+  const zeilen=[["ok","pünktlich","unter 5 min",rOk,OK],["mg","ab 5 min, mit Grund",schnitt(minMg,MG),rMg,MG],["og","ab 5 min, ohne Grund",schnitt(minOg,OG),rOg,OG],["aus","ausgefallen",rAusSp?`davon ${hAusSp?ca:""}${fz(rAusSp)} zu spät`:"",rAus,AUS]];
+  if(OE>=0.5)zeilen.push(["oe","ohne Echtzeit","Verspätung unbekannt",rOe,OE]);
   $("#s4-stand").textContent=seit?`gezählt seit ${seit}`:"";
   box.innerHTML=`<div class="s4-leiste"><div class="s4-tabs" role="group" aria-label="Zeitraum">${S4_ZEITEN.map(([k,t])=>`<button type="button" data-z="${k}" aria-pressed="${k===s4Zeit}">${t}</button>`).join("")}</div>
       <span class="s4-anz"><b>${fz(n)}</b> Fahrten gezählt</span></div>
     <div class="s4-cols"><div>
       <div class="s4-k">
-        <div class="s4-kz s4-c-sp"><h4>Ab 5 min verspätet</h4><b>${gross(sp,vn)}</b><p>${vn?`${fz(sp)} von ${fz(vn)} Fahrten${sp?" · "+schnitt(zahl(v,"ogMin")+zahl(v,"mgMin"),sp):""}`:n?"wird ab jetzt gezählt":"noch keine Fahrten"}</p>
-          ${vn?`<div class="s4-split" aria-hidden="true"><i class="s4-c-mg" style="width:${breite(mg,sp)}"></i><i class="s4-c-og" style="width:${breite(og,sp)}"></i></div>
-          <div class="s4-split-t"><span class="s4-c-mg">${fz(mg)} mit Grund</span><span class="s4-c-og">${fz(og)} ohne Grund</span></div>`:""}</div>
+        <div class="s4-kz s4-c-sp"><h4>Ab 5 min verspätet</h4><b>${gross(SP,vn)}</b><p>${vn?`${ca}${fz(rSp)} von ${fz(vn)} Fahrten${SP?" · "+schnitt(minOg+minMg,SP):""}`:n?"wird ab jetzt gezählt":"noch keine Fahrten"}</p>
+          ${vn?`<div class="s4-split" aria-hidden="true"><i class="s4-c-mg" style="width:${breite(MG,SP)}"></i><i class="s4-c-og" style="width:${breite(OG,SP)}"></i></div>
+          <div class="s4-split-t"><span class="s4-c-mg">${ca}${fz(rMg)} mit Grund</span><span class="s4-c-og">${ca}${fz(rOg)} ohne Grund</span></div>`:""}</div>
         <div class="s4-kz s4-c-kurz"><h4>Nicht bis Marienplatz</h4><b>${gross(kurz,n)}</b><p>${fz(kurz)} von ${fz(n)} Fahrten endeten vorher oder fuhren mit Ersatzverkehr</p></div>
       </div>
       <h3>So fuhren die Züge ${vn?`<small>${fz(vn)} Fahrten</small>`:""}</h3>
-      ${vn?`<div class="s4-vt-bar" aria-hidden="true">${zeilen.filter(r=>r[3]).map(r=>`<i class="s4-c-${r[0]}" style="width:${breite(r[3],vn)}"></i>`).join("")}</div>
-      <div class="s4-vt">${zeilen.map(([k,l,x,a])=>`<i class="d s4-c-${k}"></i><span class="l">${l}${x?`<small>${x}</small>`:""}</span><span class="z">${fz(a)}</span><span class="p">${klein(a,vn)}</span>`).join("")}</div>
-      <div class="s4-vt s4-vt-sum"><i></i><span class="l">ab 5 min verspätet gesamt</span><span class="z">${fz(sp)}</span><span class="p">${klein(sp,vn)}</span></div>`
+      ${vn?`<div class="s4-vt-bar" aria-hidden="true">${zeilen.filter(r=>r[4]>=0.005).map(r=>`<i class="s4-c-${r[0]}" style="width:${breite(r[4],vn)}"></i>`).join("")}</div>
+      <div class="s4-vt">${zeilen.map(([k,l,x,a,w])=>`<i class="d s4-c-${k}"></i><span class="l">${l}${x?`<small>${x}</small>`:""}</span><span class="z">${fz(a)}</span><span class="p">${klein(w<0.005?0:w,vn)}</span>`).join("")}</div>
+      <div class="s4-vt s4-vt-sum"><i></i><span class="l">ab 5 min verspätet gesamt</span><span class="z">${fz(rSp)}</span><span class="p">${klein(SP,vn)}</span></div>
+      ${he?`<p class="s4-hr">${he===1?"1 Fahrt":fz(he)+" Fahrten"} ohne Echtzeit („laut Fahrplan“) ${he===1?"ist":"sind"} nach dem Schnitt ihrer Woche verteilt (geschätzt).</p>`:""}`
       :`<div class="empty">${n?"Die Aufteilung (pünktlich, verspätet mit/ohne Grund, ausgefallen) beginnt mit den nächsten Fahrten.":"Noch keine Fahrten gezählt."}</div>`}
     </div><div>
       <h3>Häufigste Verspätungsgründe <small>ab 1 min</small></h3>
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
     </div></div>
-    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
+    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“, seit dem Abend des 26.11.2026; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
 async function s4Auf(){
   $("#s4stat").hidden=false;s4Zeigen();

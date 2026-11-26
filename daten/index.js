@@ -54,6 +54,7 @@ const S4_URL = "https://www.mvg.de/api/bgw-pt/v3/departures?globalId=de:09162:17
 const S4_WEST = /Buchenau|Geltendorf|F[üu]rstenfeldbruck|Puchheim|Eichenau|Grafrath|T[üu]rkenfeld|Sch[öo]ngeising|Freiham|Neuaubing|Gilching|Germering/i;
 const S4_KURZ = /Leienfels|Pasing|\bLaim\b|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|\bHbf\b|Karlsplatz|Stachus|Heimeranplatz/i;
 const S4_TAGE = 730, S4_AB = 5;                     // so viele Tage bleiben gezählt; „verspätet“ (mit/ohne Grund) ab so vielen Minuten
+const S4_FAHRTEN_TAGE = 90;                         // so lange bleibt jede gezählte Fahrt einzeln gemerkt
 const s4Tag = ms => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
 let s4Merk = null;                                  // Antwort für die Seite kurz merken (eine Minute je Rechner-Instanz)
 
@@ -235,39 +236,69 @@ export class DatenState {
 
   // ---------- S4-Zähler ----------
   // liste: Antwort der MVG. Offene Fahrten werden mit dem neuesten Stand gemerkt und gezählt, sobald sie abgefahren sind.
+  // Ohne Echtzeit wird gewartet, solange die MVG die Fahrt noch anzeigt (kommt die Echtzeit spät, zählt die Fahrt doch noch
+  // mit ihrer Verspätung). Ein Stand ohne Echtzeit ersetzt nie einen früheren mit Echtzeit (Aussetzer der Echtzeitdaten).
+  // Ausgefallen ist eine Fahrt, wenn die MVG sie streicht oder wenn sie erst abfährt, wenn laut Fahrplan schon die nächste
+  // S4 Richtung Innenstadt fahren sollte („zu spät“). Jede gezählte Fahrt wird zusätzlich einzeln gemerkt (S4_FAHRTEN_TAGE),
+  // damit sich die Regeln später auch für vergangene Fahrten nachrechnen lassen.
   async s4Zaehlen(liste, now) {
     if (!Array.isArray(liste)) return { ok: false };
     const s = (await this.s.get("s4")) || { seit: s4Tag(now), offen: {}, tage: {}, fertig: {} };
     s.fertig = s.fertig || {};
+    const gelistet = new Set();
     for (const d of liste) {
       if (!d || d.label !== "S4" || S4_WEST.test(d.destination || "") || !Number.isFinite(d.plannedDepartureTime)) continue;
+      if (Math.abs(d.plannedDepartureTime - now) > 3 * 864e5) continue;   // unsinnige Zeit: nicht zählen
       if (s.fertig[d.plannedDepartureTime]) continue;   // schon gezählt (steht nach der Abfahrt noch kurz in der Liste)
+      const p = d.plannedDepartureTime, alt = s.offen[p], rt = d.realtime !== false;
+      gelistet.add(String(p));
       const v = Number.isFinite(d.delayInMinutes) ? Math.max(0, Math.round(d.delayInMinutes)) : 0;
       const gruende = [...new Set((Array.isArray(d.infos) ? d.infos : []).map(i => String(i?.message ?? "").replace(/\s+/g, " ").trim().slice(0, 80)).filter(Boolean))].slice(0, 4);
-      s.offen[d.plannedDepartureTime] = {
-        t: Number.isFinite(d.realtimeDepartureTime) ? d.realtimeDepartureTime : d.plannedDepartureTime + v * 60e3, v, aus: !!d.cancelled, rt: d.realtime !== false,
+      const f = {
+        t: Number.isFinite(d.realtimeDepartureTime) ? d.realtimeDepartureTime : p + v * 60e3, v, aus: !!d.cancelled, rt,
         kurz: !!d.sev || (!/Berg am Laim/i.test(d.destination || "") && S4_KURZ.test(d.destination || "")), g: gruende,
+        s: now, r1: alt?.r1 ?? (rt ? now : null), ziel: String(d.destination || "").slice(0, 40),
       };
+      // Echtzeit gerade weg: den letzten Echtzeitstand behalten (auch gestrichen, Ziel, Ersatzverkehr und Gründe)
+      if (!rt && alt?.rt) { f.t = alt.t; f.v = alt.v; f.rt = true; f.aus = f.aus || !!alt.aus; f.kurz = f.kurz || !!alt.kurz; if (!f.g.length && Array.isArray(alt.g)) f.g = alt.g; if (typeof alt.ziel === "string") f.ziel = alt.ziel; }
+      s.offen[p] = f;
     }
+    // Abfahrten laut Fahrplan aller bekannten, nicht gestrichenen Fahrten (noch offen oder in den letzten 6 h gezählt) – für
+    // „zu spät“. Gestrichene zählen nicht als „die nächste“: Fährt die verspätete im Takt der gestrichenen (Zugtausch), ist
+    // das ein Ausfall (die gestrichene), nicht zwei.
+    s.fertigAus = s.fertigAus || {};
+    const plan = [...new Set([...Object.keys(s.offen).filter(p => !s.offen[p].aus), ...Object.keys(s.fertig).filter(p => !s.fertigAus[p])])]
+      .map(Number).filter(Number.isFinite).sort((x, y) => x - y);
+    const naechste = p => plan.find(x => x > p) ?? null;
+    const fahrten = {};   // je Tag die eben gezählten Fahrten
     // abgefahren (zwei Minuten Nachlauf): zählen und vergessen
     for (const [p, f] of Object.entries(s.offen)) {
       if (f.t > now - 120e3) continue;
-      delete s.offen[p]; s.fertig[p] = now;
+      // ohne Echtzeit, aber noch angezeigt: warten (höchstens 90 min nach Fahrplan) – vielleicht kommt die Echtzeit noch
+      if (f.rt === false && gelistet.has(p) && now - +p < 90 * 60e3) continue;
+      delete s.offen[p]; s.fertig[p] = now; if (f.aus) s.fertigAus[p] = now;
+      const n = naechste(+p), spaet = !f.aus && f.rt !== false && n !== null && f.t >= n;
       // v: Aufteilung der Fahrten (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen / ohne Echtzeit) mit eigener
-      // Fahrtenzahl – gibt es erst seit dem 24.11.2026 (an dem Tag erst ab dem Einbau), ältere Fahrten fehlen darin
+      // Fahrtenzahl – gibt es erst seit dem 24.11.2026 (an dem Tag erst ab dem Einbau), ältere Fahrten fehlen darin.
+      // ausSp: davon ausgefallen, weil „zu spät“ (gezählt seit dem Abend des 26.11.2026)
       const tag = s4Tag(+p), z = s.tage[tag] || (s.tage[tag] = { n: 0, kurz: 0, g: {} });
-      const v = z.v || (z.v = { n: 0, aus: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
+      const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
+      (fahrten[tag] || (fahrten[tag] = [])).push({ p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0,
+        n, s: Number.isFinite(f.s) ? f.s : null, r1: Number.isFinite(f.r1) ? f.r1 : null, z: typeof f.ziel === "string" ? f.ziel : "", g: Array.isArray(f.g) ? f.g : [] });
       z.n++; v.n++;
+      const gruendeZaehlen = () => { for (const g of f.g) { if (g in z.g || Object.keys(z.g).length < 40) z.g[g] = (z.g[g] || 0) + 1; } };
       if (f.aus) { v.aus++; continue; }
+      if (spaet) { v.aus++; v.ausSp = (v.ausSp || 0) + 1; if (f.g.length) gruendeZaehlen(); continue; }
       if (f.kurz) z.kurz++;
       // ohne Echtzeit (z. B. Ausfall der Echtzeitdaten): Verspätung unbekannt – zählt weder als pünktlich noch als verspätet
       if (f.rt === false) { v.oe++; continue; }
       if (f.v >= 1 && f.g.length) {
-        for (const g of f.g) { if (g in z.g || Object.keys(z.g).length < 40) z.g[g] = (z.g[g] || 0) + 1; }
+        gruendeZaehlen();
         if (f.v >= S4_AB) { v.mg++; v.mgMin += f.v; }
       } else if (f.v >= S4_AB) { v.og++; v.ogMin += f.v; }
     }
     for (const [p, t] of Object.entries(s.fertig)) if (t < now - 6 * 3600e3) delete s.fertig[p];
+    for (const p of Object.keys(s.fertigAus)) if (!s.fertig[p]) delete s.fertigAus[p];
     const tage = Object.keys(s.tage).sort();
     for (const t of tage.slice(0, Math.max(0, tage.length - S4_TAGE))) delete s.tage[t];
     // Größe begrenzen (ein Speicherwert, höchstens 2 MB): Tage älter als 60 Tage behalten nur ihre fünf häufigsten Gründe
@@ -277,25 +308,55 @@ export class DatenState {
       const g = Object.entries(z.g || {});
       if (tag < grenze && g.length > 5) z.g = Object.fromEntries(g.sort((a, b) => b[1] - a[1]).slice(0, 5));
     }
+    // einzelne Fahrten: je Tag ein Speicherwert, höchstens 300 Fahrten, nach S4_FAHRTEN_TAGE gelöscht
+    const schreiben = {}, weg = [], fGrenze = s4Tag(now - S4_FAHRTEN_TAGE * 864e5);
+    s.fTage = Array.isArray(s.fTage) ? s.fTage : [];
+    for (const [tag, l] of Object.entries(fahrten)) {
+      const alt = await this.s.get("s4f:" + tag);
+      schreiben["s4f:" + tag] = [...(Array.isArray(alt) ? alt : []), ...l].slice(-300);
+      if (!s.fTage.includes(tag)) s.fTage.push(tag);
+    }
+    for (const tag of s.fTage) if (tag < fGrenze) { weg.push("s4f:" + tag); delete schreiben["s4f:" + tag]; }
+    s.fTage = s.fTage.filter(t => t >= fGrenze).sort();
     s.ok = now;
-    await this.s.put("s4", s);
+    schreiben.s4 = s;
+    await this.s.put(schreiben);                      // Zähler und einzelne Fahrten in einem Schritt: nie halb gespeichert
+    if (weg.length) await this.s.delete(weg);
     return { ok: true };
   }
   // Summen für 7 Tage, 30 Tage und alles; je Zeitraum die zehn häufigsten Gründe.
   // v: Aufteilung der Fahrten – nur die Fahrten, die schon mit „mit Grund“ gezählt wurden; vAb: erster Tag damit im Zeitraum
+  // h: Hochrechnung der Fahrten ohne Echtzeit – jede bekommt die Verteilung der Fahrten mit Echtzeit ihrer Woche (Mo–So,
+  // die laufende Woche mit dem Stand bisher). h.n: so viele Fahrten sind geschätzt; Wochen ganz ohne Echtzeit bleiben offen.
   async s4Lesen(now) {
     const s = (await this.s.get("s4")) || { seit: null, tage: {} };
+    const VK = ["n", "aus", "ausSp", "og", "ogMin", "mg", "mgMin", "oe"], HK = ["aus", "ausSp", "og", "ogMin", "mg", "mgMin"];
+    const zahl = x => { x = +x; return Number.isFinite(x) && x > 0 ? x : 0; };
+    const vVon = t => (t.v && typeof t.v === "object" ? t.v : null);
+    const woche = tag => { const d = new Date(tag + "T12:00:00Z"); return Number.isFinite(d.getTime()) ? new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10) : "?"; };
+    const wochen = {};
+    for (const [tag, t] of Object.entries(s.tage)) {
+      const tv = vVon(t); if (!tv) continue;
+      const w = wochen[woche(tag)] || (wochen[woche(tag)] = Object.fromEntries(VK.map(k => [k, 0])));
+      for (const k of VK) w[k] += zahl(tv[k]);
+    }
     const summe = ab => {
-      const z = { n: 0, kurz: 0 }, v = { n: 0, aus: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 }, g = {};
+      const z = { n: 0, kurz: 0 }, v = Object.fromEntries(VK.map(k => [k, 0])), h = { n: 0, ...Object.fromEntries(HK.map(k => [k, 0])) }, g = {};
       let vAb = null;
       for (const [tag, t] of Object.entries(s.tage)) {
         if (ab && tag < ab) continue;
         for (const k of Object.keys(z)) z[k] += t[k] || 0;
-        const tv = t.v && typeof t.v === "object" ? t.v : null;
-        if (tv) { for (const k of Object.keys(v)) v[k] += tv[k] || 0; if (!vAb || tag < vAb) vAb = tag; }
+        const tv = vVon(t);
+        if (tv) {
+          for (const k of VK) v[k] += zahl(tv[k]);
+          if (!vAb || tag < vAb) vAb = tag;
+          const oe = zahl(tv.oe), w = wochen[woche(tag)], mit = w.n - w.oe;
+          if (oe && mit > 0) { h.n += oe; for (const k of HK) h[k] += oe * w[k] / mit; }
+        }
         for (const [text, n] of Object.entries(t.g || {})) g[text] = (g[text] || 0) + n;
       }
-      return { ...z, v, vAb, top: Object.entries(g).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de")).slice(0, 10) };
+      for (const k of HK) h[k] = Math.round(h[k] * 1000) / 1000;
+      return { ...z, v, vAb, h, top: Object.entries(g).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de")).slice(0, 10) };
     };
     // erster Tag des Zeitraums nach dem Kalender (nicht „jetzt minus 24 h“ – sonst um die Zeitumstellung ein Tag zu viel/wenig)
     const vorTagen = k => new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - k * 864e5).toISOString().slice(0, 10);
