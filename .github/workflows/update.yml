@@ -6,7 +6,9 @@ on:
     # Zeitgeber bei Cloudflare (Dienst daten/) den Ablauf stündlich an. Gearbeitet wird in beiden Fällen nur, wenn die
     # Daten älter als gut 2,5 Stunden sind (Auftrag „takt“).
     # Dienste (Dienstplan-Portal) werden dabei jedes Mal mit geholt, sofern der letzte Abruf mindestens 2,5 Stunden her ist.
-    - cron: "23 4-22 * * *"
+    # versetzt zum Zeitgeber bei Cloudflare (:23): sonst starteten oft zwei Volläufe gleichzeitig; so läuft dieser meist
+    # leer durch (Daten frisch) und springt nur ein, wenn der Zeitgeber ausfällt
+    - cron: "53 4-22 * * *"
   workflow_dispatch:
     inputs:
       anlass:
@@ -80,30 +82,7 @@ jobs:
         run: pip install -q --require-hashes -r scripts/requirements.txt
 
       # ---------- öffentliche Daten ----------
-      - name: Events abrufen
-        id: events
-        continue-on-error: true
-        timeout-minutes: 25      # eine hängende Quelle kostet nur diesen Schritt, nicht den ganzen Lauf
-        run: python scripts/fetch_events.py
-        env:
-          TICKETMASTER_KEY: ${{ secrets.TICKETMASTER_KEY }}
-      - name: Schulferien Bayern
-        id: ferien
-        continue-on-error: true
-        timeout-minutes: 5
-        run: python scripts/fetch_ferien.py
-      - name: Pollenflug (DWD)
-        id: pollen
-        continue-on-error: true
-        timeout-minutes: 5
-        run: python scripts/fetch_pollen.py
-      - name: Kinopreise (Mathäser)
-        id: kino
-        continue-on-error: true
-        timeout-minutes: 10
-        run: python scripts/fetch_kino.py
-
-      # ---------- private Daten: nur verschlüsselt in den geschützten Speicher, nichts davon ins Projekt oder Protokoll ----------
+      # zuerst die privaten Daten (kurz, eigener Takt): eine hängende öffentliche Quelle kann sie so nicht mehr abschneiden
       - name: Schlüssel für den geschützten Speicher ableiten
         id: schluessel
         env:
@@ -141,6 +120,31 @@ jobs:
           DATEN_UPLOAD_KEY: ${{ steps.schluessel.outputs.upload }}
           DATEN_INTERN: ${{ steps.schluessel.outputs.intern }}
           PRIVAT_SOFORT: ${{ github.event_name == 'workflow_dispatch' && inputs.anlass != 'zeitplan' && '1' || '0' }}
+
+      - name: Events abrufen
+        id: events
+        continue-on-error: true
+        timeout-minutes: 25      # eine hängende Quelle kostet nur diesen Schritt, nicht den ganzen Lauf
+        run: python scripts/fetch_events.py
+        env:
+          TICKETMASTER_KEY: ${{ secrets.TICKETMASTER_KEY }}
+      - name: Schulferien Bayern
+        id: ferien
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python scripts/fetch_ferien.py
+      - name: Pollenflug (DWD)
+        id: pollen
+        continue-on-error: true
+        timeout-minutes: 5
+        run: python scripts/fetch_pollen.py
+      - name: Kinopreise (Mathäser)
+        id: kino
+        continue-on-error: true
+        timeout-minutes: 10
+        run: python scripts/fetch_kino.py
+
+      # ---------- private Daten: nur verschlüsselt in den geschützten Speicher, nichts davon ins Projekt oder Protokoll ----------
 
       - name: Daten speichern
         id: speichern

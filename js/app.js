@@ -260,7 +260,9 @@ function dienstZeigen(){
   // Bemerkungen gesperrter Tage kommen aus der Druckansicht; ist sie seit über 12 h nicht lesbar, steht ihr Stand dabei
   const bemSt=Date.parse(privData.bemStand||""), bemAlt=!!(stand&&bemSt&&stand-bemSt>12*3600e3&&ein.some(e=>e.gesperrt&&e.d>=today));
   const pz=pauseAktiv();
-  st.textContent=stand?`Stand ${fmtD(stand)} ${fmtT(stand)}${pz?" · Abruf pausiert":alt?" – Abruf klappt gerade nicht":""}${bemAlt&&!pz?` · Bemerkungen gesperrter Tage: Stand ${fmtD(bemSt)} ${fmtT(bemSt)}`:""}`:"";st.classList.toggle("alt",!pz&&(!!alt||bemAlt));
+  // Der Abgleich merkt (nur verschlüsselt) an, wenn die Dienst-PIN schwach ist – die alten Ablagen liegen öffentlich im Verlauf
+  const pinSchwach=dienstDaten()?.pinSchwach===true;
+  st.textContent=stand?`Stand ${fmtD(stand)} ${fmtT(stand)}${pz?" · Abruf pausiert":alt?" – Abruf klappt gerade nicht":""}${bemAlt&&!pz?` · Bemerkungen gesperrter Tage: Stand ${fmtD(bemSt)} ${fmtT(bemSt)}`:""}${pinSchwach?" · ⚠ Dienst-PIN zu schwach – bitte in GitHub ändern (mind. 10 Zeichen, Buchstaben und Ziffern)":""}`:"";st.classList.toggle("alt",pinSchwach||!pz&&(!!alt||bemAlt));
   kontoZeigen();abrufZeigen();
   // Fahrzeit zur Arbeit: einrichten bzw. Stand
   const fuss=$("#dn-fuss"), ohnePass=wegUrl&&!store.get(WEG_KEY,""), ws=typeof wegStatus!=="undefined"?wegStatus:"";
@@ -860,8 +862,9 @@ function renderCal(){
   }).join("")}</div>`;
   // Stand älter als 12 h: der Abgleich mit TimeTree klappt offenbar nicht – deutlich zeigen
   const alt=Date.now()-Date.parse(calData.stand)>12*3600e3, st=$("#cal-stamp");
-  st.textContent=(alt?"⚠ ":"")+"Stand "+new Date(calData.stand).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
-  st.classList.toggle("alt",alt);
+  const pwSchwach=calData.pwSchwach===true;   // vom Abgleich, nur verschlüsselt
+  st.textContent=(alt?"⚠ ":"")+"Stand "+new Date(calData.stand).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"})+(pwSchwach?" · ⚠ Kalender-Passwort zu schwach – bitte ändern":"");
+  st.classList.toggle("alt",alt||pwSchwach);
   // läuft jede Minute: nur bei Änderung neu aufbauen und vermessen (Größenänderungen fängt fitCal über resize/ResizeObserver)
   const lst=$("#cal-list");if(lst._html!==html){lst.innerHTML=html;lst._html=html;fitCal();}
 }

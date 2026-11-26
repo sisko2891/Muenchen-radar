@@ -233,6 +233,8 @@ def main():
         except Exception:  # noqa: BLE001
             pass
         raise SystemExit(f"Abruf der Termine gescheitert ({grund}) – der bisherige Stand bleibt") from None
+    if daten.schwach(pw):   # nur verschlüsselt: die Seite bittet dann darum, das Passwort zu ändern
+        data["pwSchwach"] = True
     daten.schreiben("kalender", encrypt(data, pw, PAD_TO), {"k": pw})
     v = verlauf_lesen()
     v.pop("kal_fehler_t", None)

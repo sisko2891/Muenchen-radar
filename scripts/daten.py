@@ -5,6 +5,7 @@ Die verschlüsselten privaten Daten liegen nicht im öffentlichen Projekt, sonde
 Geschrieben wird mit DATEN_UPLOAD_KEY, gelesen mit einem Zugangsschlüssel, der aus PIN bzw. Passwort
 berechnet wird (derselbe wie im Browser). Beide Werte kommen nie ins Protokoll.
 """
+import functools
 import hashlib
 import json
 import os
@@ -49,6 +50,14 @@ def intern():
     return g if len(g) >= 32 else ""
 
 
+def schwach(geheimnis):
+    """README: PIN/Passwort mindestens 10 Zeichen mit Buchstaben und Ziffern (lange Passphrasen ab 16 Zeichen gelten
+    immer als stark). Ergebnis landet nur verschlüsselt bei den Daten – das öffentliche Protokoll erfährt nichts."""
+    g = str(geheimnis or "")
+    return len(g) < 16 and (len(g) < 10 or not (re.search(r"[^\W\d_]", g) and re.search(r"\d", g)))
+
+
+@functools.lru_cache(maxsize=16)   # 600 000 PBKDF2-Runden: je Lauf nur einmal je Geheimnis und Ablage rechnen
 def zugangsschluessel(geheimnis, name):
     """32 Byte, wie im Browser: PBKDF2-SHA256 über das Geheimnis, Salt = fester Text je Ablage."""
     return hashlib.pbkdf2_hmac("sha256", geheimnis.encode(), ("katzingers-castle/zugang/v1/" + name).encode(), ITER, 32)

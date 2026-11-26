@@ -311,7 +311,9 @@ def _merken(merk, k, neu, now):
     if st is None:
         merk[k] = {"t": neu}
     elif st.get("t", "") != neu:
-        if st.get("t") or st.get("seit"):
+        if not st.get("t") and neu == st.get("alt"):   # gestrichen und wieder eingetragen: keine Änderung „X → X“
+            merk[k] = {"t": neu}
+        elif st.get("t") or st.get("seit"):
             merk[k] = {"t": neu, "alt": st.get("t") or st.get("alt", ""), "seit": now}
         else:
             merk[k] = {"t": neu}
@@ -367,9 +369,10 @@ def _turbo_idx(e):
 def fix_turbo(entries):
     """Turbo-Woche: 4 Dienste in 3 Tagen (04:30, 22:30, 19:30, 14:30). Das Portal führt jeden Dienst in einer
     eigenen Tageszeile, tatsächlich beginnen Dienst 2–4 aber einen Kalendertag früher.
-    Erkennung über die Nachbarn: Ein Dienst gehört zur Folge, wenn der Vortag den vorherigen oder der
-    Folgetag den nächsten Dienst der Abfolge hat. So klappt es auch, wenn die Folge vor heute begonnen hat
-    (das Portal liefert erst ab heute). Alle anderen Wochen bleiben täglich."""
+    Erkennung über die Nachbarn: Ein Dienst gehört zur Folge, wenn er mit seinen Nachbartagen eine lückenlose Folge
+    von mindestens drei passenden Tagen bildet (gesperrte Tage zählen als passend). Reicht die Folge bis an den Rand
+    der Daten (sie kann davor bzw. danach weitergehen, das Portal liefert erst ab heute), genügen zwei. Ein einzelnes
+    passendes Paar in einer normalen Woche (z. B. 19:30 und am Folgetag 14:30) bleibt so täglich."""
     by_day = {}
     for e in entries:
         by_day.setdefault(e["d"], []).append(e)
@@ -385,17 +388,30 @@ def fix_turbo(entries):
         es = by_day.get(d, [])
         return bool(es) and all(e["gesperrt"] for e in es)
 
+    last = days[-1] if days else None
+
+    def passt(t, j):
+        return k_of(t) == j or gesperrt(t)
+
+    def kette(d, k):
+        """Länge der lückenlosen Folge um d; offen = sie reicht an den Datenrand und kann dort weitergehen"""
+        n, i, offen = 1, 1, False
+        while k - i >= 0 and passt(shift(d, -i), k - i):
+            n, i = n + 1, i + 1
+        offen |= k - i >= 0 and shift(d, 1 - i) == first
+        i = 1
+        while k + i <= 3 and passt(shift(d, i), k + i):
+            n, i = n + 1, i + 1
+        offen |= k + i <= 3 and shift(d, i - 1) == last
+        return n, offen
+
     rolle = {}  # Tag -> Position in der Folge (1–3 werden vorgezogen)
     for d in days:
         k = k_of(d)
         if k is None:
             continue
-        prev, nxt = k_of(shift(d, -1)), k_of(shift(d, 1))
-        dazu = (k > 0 and prev == k - 1) or (k < 3 and nxt == k + 1)
-        # Folge hat vor heute begonnen: erster Datentag ist Dienst 2 oder 3, der Folgetag passt oder ist gesperrt
-        if not dazu and d == first and k in (1, 2) and (nxt == k + 1 or gesperrt(shift(d, 1))):
-            dazu = True
-        if dazu:
+        n, offen = kette(d, k)
+        if n >= 3 or (n == 2 and offen):
             rolle[d] = k
     # gesperrter Tag direkt nach Dienst 3 ist Dienst 4
     for d, k in list(rolle.items()):
@@ -664,7 +680,10 @@ def abgleich(pin):
             # Verlauf), sonst ließen sich weder die Dienste lesen noch die Pause beenden
             if daten.lesen("privat", pin)[0] is None and not daten.stand("privat").get("leer"):
                 if isinstance(verlauf.get("letzte"), dict):   # ohne gemerkten Stand nichts umstellen: dann bleibt
-                    daten.schreiben("privat", encrypt(verlauf["letzte"], pin), {"p": pin})   # wenigstens die alte PIN
+                    letzte = {k: v for k, v in verlauf["letzte"].items() if k != "pinSchwach"}   # wenigstens die alte PIN
+                    if daten.schwach(pin):
+                        letzte["pinSchwach"] = True
+                    daten.schreiben("privat", encrypt(letzte, pin), {"p": pin})
         except Exception:  # noqa: BLE001 – still: das Protokoll bleibt mit und ohne Pause gleich
             pass
         pause_lauf(verlauf, pin)
@@ -725,6 +744,8 @@ def echter_lauf(pin, verlauf, vorhanden, mit):
         raise SystemExit(text) from None
     zeit = lambda t: datetime.fromtimestamp(t, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     payload = {"stand": zeit(jetzt()), "eintraege": entries}
+    if daten.schwach(pin):   # nur verschlüsselt: die Seite bittet dann darum, die PIN zu ändern
+        payload["pinSchwach"] = True
     if druck_t:   # wann die Bemerkungen gesperrter Tage zuletzt gelesen wurden – die Seite weist darauf hin, wenn das länger her ist
         payload["bemStand"] = zeit(druck_t)
     if isinstance(konto, dict):   # mit eigenem Stand: ist das Konto einmal nicht lesbar, zeigt die Seite das Alter an

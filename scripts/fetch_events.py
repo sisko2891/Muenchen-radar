@@ -357,6 +357,10 @@ def main():
             if not got and any(hat(e2, name) for e2 in old.values()):
                 raise RuntimeError("0 Events gelesen (Seite geändert?) – alte Einträge bleiben")
             status[name] = {"ok": True, "count": len(got)}
+            for e2 in got:   # Detailseite kurz nicht erreichbar: Datum und Zeiten des letzten Stands behalten
+                o = old.get(e2.get("id"), {})
+                if not e2.get("start") and o.get("start"):
+                    e2.update({k: o.get(k) for k in ("start", "end", "when")})
             events += got
         except Exception as e:
             print(name, "FEHLER", e, file=sys.stderr)

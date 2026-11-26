@@ -6,12 +6,17 @@
 set -euo pipefail
 ORDNER="$1"; NAME="$2"; shift 2
 export CLOUDFLARE_ACCOUNT_ID="$(printf '%s' "${CF_ACC_RAW:-}" | tr -d '[:space:]')"
+# ohne Konto-ID listete wrangler die Konten des Tokens ins öffentliche Protokoll
+[ -n "$CLOUDFLARE_ACCOUNT_ID" ] || { echo "::error::CLOUDFLARE_ACCOUNT_ID ist leer"; exit 1; }
 export WRANGLER_SEND_METRICS=false
 W="$PWD/werkzeug/node_modules/.bin/wrangler"
 [ -x "$W" ] || { echo "::error::wrangler fehlt (npm ci im Ordner werkzeug)"; exit 1; }
 cd "$ORDNER"
 LOG="$(mktemp)"
-"$W" deploy 2>&1 | tee "$LOG"
+# Das Protokoll ist öffentlich: Bei einem Anmeldefehler hängt wrangler „whoami“ an (E-Mail und Kontoname) – das wird
+# abgeschnitten, E-Mail-Adressen werden vorsorglich unkenntlich gemacht
+FILTER='/Getting User settings/,$d; s/[[:alnum:]._%+-]+@[[:alnum:].-]+\.[[:alpha:]]{2,}/<E-Mail>/g'
+"$W" deploy 2>&1 | sed -u -E "$FILTER" | tee "$LOG"
 URL=$(grep -oE "https://${NAME}\.[a-z0-9-]+\.workers\.dev" "$LOG" | head -1 || true)
 rm -f "$LOG"
 [ -n "$URL" ] || { echo "::error::Keine Adresse gefunden (workers.dev-Subdomain vorhanden?)"; exit 1; }
@@ -19,6 +24,6 @@ rm -f "$LOG"
 case "$URL" in *.katzingers-castle.workers.dev) ;; *) echo "::warning::Adresse $URL passt nicht zur Freigabe in index.html (connect-src) – dort ergänzen";; esac
 echo "url=$URL" >> "$GITHUB_OUTPUT"
 for n in "$@"; do
-  printf '%s' "${!n}" | "$W" secret put "$n" > /dev/null
+  if ! aus=$(printf '%s' "${!n}" | "$W" secret put "$n" 2>&1); then printf '%s\n' "$aus" | sed -E "$FILTER"; exit 1; fi
   echo "$n gesetzt"
 done

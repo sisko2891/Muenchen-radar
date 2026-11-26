@@ -6,6 +6,8 @@ PASS="$1"; MIN="$2"; shift 2
 fehlt=""
 for n in "$PASS" "$@"; do [ -n "${!n:-}" ] || fehlt="$fehlt $n"; done
 if [ -n "$fehlt" ]; then echo "Noch nicht eingerichtet, fehlt:$fehlt – Veröffentlichung übersprungen."; echo "go=0" >> "$GITHUB_OUTPUT"; exit 0; fi
+# mitkopierte Leerzeichen am Rand oder Zeilenumbrüche (beim Einfügen leicht passiert) machen jeden Schlüssel unbrauchbar
+for n in "$@"; do case "${!n}" in [[:space:]]*|*[[:space:]]|*[$'\n\r']*) echo "::error::$n beginnt oder endet mit einem Leerzeichen oder enthält einen Zeilenumbruch – bitte ohne diese Zeichen neu hinterlegen"; exit 1;; esac; done
 v="${!PASS}"
 [ "${#v}" -ge "$MIN" ] || { echo "::error::$PASS ist kürzer als $MIN Zeichen"; exit 1; }
 # Passwörter der Seite (…_PASS) reisen als Kopfzeile einer Anfrage. Leerzeichen am Anfang/Ende oder ein Zeilenumbruch
