@@ -21,7 +21,7 @@ const store = {
 const GERAET=(()=>{let g=store.get("geraet","");if(!/^[0-9a-f]{32}$/.test(g)){g=[...crypto.getRandomValues(new Uint8Array(16))].map(b=>b.toString(16).padStart(2,"0")).join("");store.set("geraet",g);}return g;})();
 // Abruf mit Zeitlimit, damit hängende Verbindungen (WLAN-Aussetzer) nicht ewig offen bleiben
 const fetchT=(url,opt={},ms=20000)=>fetch(url,{...opt,...(typeof AbortSignal!=="undefined"&&AbortSignal.timeout?{signal:AbortSignal.timeout(ms)}:{})});
-async function getJSON(url){const r=await fetchT(url,{cache:"no-store"});if(!r.ok)throw new Error(r.status);return r.json();}
+async function getJSON(url){const r=await fetchT(url,{cache:/^https?:/i.test(url)?"no-store":"no-cache"});if(!r.ok)throw new Error(r.status);return r.json();}
 // verständlicher Fehlertext statt Browser-Meldungen wie „Failed to fetch“
 const errTxt=e=>e?.name==="TimeoutError"?"Zeitüberschreitung":/^(Failed to fetch|Load failed|NetworkError)/.test(e?.message||"")?"keine Verbindung":(e?.message||"Fehler");
 function setPill(el,state,text){el.className="pill "+state;el.innerHTML='<i></i><span class="pt">'+esc(text)+"</span>";}
@@ -480,7 +480,7 @@ function s4Zeigen(meldung){
     <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
 async function s4Auf(){
-  $("#s4stat").hidden=false;s4Zeigen();
+  s4WvWahl=-1;$("#s4stat").hidden=false;s4Zeigen();
   clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);   // schließt nach 2 min von selbst
   try{const url=await datenAdresse();if(!url)throw new Error("Zähler nicht erreichbar");
     const r=await fetchT(`${url}/s4`,{cache:"no-store"});if(!r.ok)throw new Error("Fehler "+r.status);
@@ -838,13 +838,13 @@ function renderCal(){
   if(ringBereit)ringZeigen();   // der Tagesbogen zeigt dieselben Termine
   if(!calDa&&!calData){box.hidden=true;return;}
   box.hidden=false;
-  if(!calData){$("#cal-form").hidden=false;$("#cal-list").innerHTML='<div class="empty">Termine sind mit einem eigenen Passwort geschützt.</div>';$("#cal-stamp").textContent="";return;}
+  if(!calData){$("#cal-form").hidden=false;$("#cal-list").innerHTML='<div class="empty">Termine sind mit einem eigenen Passwort geschützt.</div>';$("#cal-list")._html="";$("#cal-stamp").textContent="";return;}
   $("#cal-form").hidden=true;
   const now=nowHM(), today=berlinDay();
   // nur Tage, die der letzte Abruf abdeckt (ab dem Abruftag CAL_ABRUF Tage)
   const bis=new Date(new Date(calData.stand).getTime()+(CAL_ABRUF-1)*864e5).toLocaleDateString("sv-SE",{timeZone:"Europe/Berlin"});
   const days=[...Array(CAL_TAGE)].map((_,k)=>berlinDay(k)).filter((d,k)=>k<8||d<=bis);
-  $("#cal-list").innerHTML=`<div class="cal-days">${days.map((d,k)=>{
+  const html=`<div class="cal-days">${days.map((d,k)=>{
     const items=calData.termine.filter(t=>t.d<=d&&(t.bis_d||t.d)>=d&&!(!t.ganztag&&t.d<d&&t.bis_d===d&&t.bis==="00:00"));
     const gz=t=>t.ganztag||(t.d<d&&(t.bis_d||t.d)>d);   // ganztägig oder Zwischentag eines mehrtägigen Termins
     const duty=(dienstDaten()?.eintraege||[]).filter(e=>e.d===d&&e.von);
@@ -858,8 +858,12 @@ function renderCal(){
     const extra=(ft?`<div class="cal-it allday ft"><i></i>${tm("Feiertag","")}<span class="ti">${esc(ft)}</span></div>`:"")+(sf&&!ft?`<div class="cal-it allday sf"><i></i>${tm("schulfrei","")}<span class="ti">${esc(sf)}</span></div>`:"");
     return `<div class="cal-day ${k===0?"today":""} ${ft?"feiertag":""}"><div class="cal-dl">${esc(l.top)}<b>${esc(l.num)}</b>${fe?`<span class="hol" title="${esc(fe)}">Ferien</span>`:""}</div><div class="cal-items">${extra+rows.join("")||'<span class="muted">–</span>'}</div></div>`;
   }).join("")}</div>`;
-  $("#cal-stamp").textContent="Stand "+new Date(calData.stand).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
-  fitCal();
+  // Stand älter als 12 h: der Abgleich mit TimeTree klappt offenbar nicht – deutlich zeigen
+  const alt=Date.now()-Date.parse(calData.stand)>12*3600e3, st=$("#cal-stamp");
+  st.textContent=(alt?"⚠ ":"")+"Stand "+new Date(calData.stand).toLocaleString("de-DE",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",timeZone:"Europe/Berlin"});
+  st.classList.toggle("alt",alt);
+  // läuft jede Minute: nur bei Änderung neu aufbauen und vermessen (Größenänderungen fängt fitCal über resize/ResizeObserver)
+  const lst=$("#cal-list");if(lst._html!==html){lst.innerHTML=html;lst._html=html;fitCal();}
 }
 // So viele Tage zeigen, dass der Kalender mit dem Feld rechts (Heizung/Licht) abschließt; mindestens CAL_MIN
 const CAL_TAGE=14, CAL_MIN=8, CAL_ABRUF=16;
@@ -1231,7 +1235,7 @@ document.addEventListener("visibilitychange",()=>{if(!document.hidden&&Date.now(
 let luft=null, luftOk=0;
 const LUFT_ST=[[20,"sehr gut"],[40,"gut"],[60,"mäßig"],[80,"schlecht"],[100,"sehr schlecht"],[1e9,"extrem schlecht"]];
 const luftAktuell=()=>luft&&Date.now()-luftOk<3*3600e3&&luft.european_aqi!=null?luft:null;
-const luftStufe=v=>LUFT_ST.findIndex(x=>v<x[0]);
+const luftStufe=v=>{const i=LUFT_ST.findIndex(x=>v<x[0]);return i<0?LUFT_ST.length-1:i;};
 function showLuft(){
   const el=$("#luft"), box=document.querySelector(".board-wx");if(!el)return;
   const c=luftAktuell();
@@ -1244,7 +1248,7 @@ function showLuft(){
 }
 async function loadLuft(){
   try{const d=await getJSON("https://air-quality-api.open-meteo.com/v1/air-quality?latitude=48.156&longitude=11.413&current=european_aqi,pm10,pm2_5,nitrogen_dioxide,ozone&timezone=Europe%2FBerlin");
-    if(d.current){luft=d.current;luftOk=Date.now();}}catch{}
+    if(d.current&&Number.isFinite(+d.current.european_aqi)){luft=d.current;luftOk=Date.now();}}catch{}
   showLuft();
 }
 loadLuft();setInterval(()=>{if(!document.hidden)loadLuft();},30*60000);
@@ -1381,11 +1385,17 @@ function msgHTML(m,offen){
   return `<details class="msg" data-k="${esc(m.title)}"${offen&&offen.has(m.title)?" open":""}><summary><span class="mtags">${now?'<span class="tag now">jetzt</span>':'<span class="tag plan">geplant</span>'}${isU(m)?[...new Set(m.lines.filter(l=>l.transportType==="UBAHN").map(l=>l.label))].map(l=>`<span class="tag">${esc(l)}</span>`).join(""):stammRelevant(m)?'<span class="tag">Stamm</span>':""}</span><span class="mwhen">${esc(kurzZeitraum(span,now))}</span><span class="mt">${esc(m.title)}</span></summary>
     <div class="body"><div class="muted">${esc(when)}</div>${sauber(m.description)}${links?`<p>${links}</p>`:""}</div></details>`;
 }
-let msgsOk=0;
+let msgsOk=0, msgsPlan=[], msgsPlanOk=0;
+// lückenhafte Einträge auslassen bzw. auffüllen, damit eine einzelne kaputte Meldung nicht alle anderen verschluckt
+const msgNorm=a=>a.filter(m=>m&&typeof m==="object").map(m=>({...m,title:String(m.title??""),description:String(m.description??""),lines:Array.isArray(m.lines)?m.lines.filter(l=>l&&typeof l==="object"):[]}));
+// Die volle Liste der MVG ist rund 260 KB groß (ungepackt) und fast nur fremde Linien: Laufende Störungen (für den Hinweis im
+// Abfahrtskasten und die U-Bahn-Liste) filtert die MVG selbst (wenige KB) und kommen weiter alle 2 min; geplante Änderungen
+// (SCHEDULE_CHANGE, Tage vorher veröffentlicht) holt die Seite nur alle 30 min mit der vollen Liste.
 async function loadMsgs(){
-  try{const neu=await getJSON(`${MVG}/messages`);if(!Array.isArray(neu))throw new Error("unerwartete Antwort");
-    // lückenhafte Einträge auslassen bzw. auffüllen, damit eine einzelne kaputte Meldung nicht alle anderen verschluckt
-    msgs=neu.filter(m=>m&&typeof m==="object").map(m=>({...m,title:String(m.title??""),description:String(m.description??""),lines:Array.isArray(m.lines)?m.lines.filter(l=>l&&typeof l==="object"):[]}));
+  try{
+    if(Date.now()-msgsPlanOk>30*60000){try{const alle=await getJSON(`${MVG}/messages`);if(Array.isArray(alle)){msgsPlan=msgNorm(alle).filter(m=>m.type!=="INCIDENT");msgsPlanOk=Date.now();}}catch{}}
+    const neu=await getJSON(`${MVG}/messages?messageTypes=INCIDENT`);if(!Array.isArray(neu))throw new Error("unerwartete Antwort");
+    msgs=[...msgNorm(neu).filter(m=>m.type==="INCIDENT"),...msgsPlan];   // falls die MVG den Filter einmal nicht beachtet: nichts doppelt
     msgsOk=Date.now();renderMsgs();}
   catch(e){
     // Aussetzer: vorhandene Meldungen stehen lassen; nach 10 min ohne Daten zählen sie nicht mehr für den Hinweis im Abfahrtskasten
@@ -1657,7 +1667,7 @@ let pageSig=null, pageNeu=false, lastTouch=0;
 // jede Berührung zählt als Bedienung; in der Nacht verlängert sie außerdem die helle Phase um 2 Minuten
 addEventListener("pointerdown",()=>{lastTouch=Date.now();if(wakeUntil>lastTouch)wakeUntil=lastTouch+2*60000;},{passive:true,capture:true});
 const sigOf=t=>{let h=0;for(let i=0;i<t.length;i++)h=(h*31+t.charCodeAt(i))|0;return t.length+":"+h;};
-async function pageText(){const r=await fetchT(location.pathname,{cache:"no-store"});if(!r.ok)throw new Error(r.status);return r.text();}
+async function pageText(){const r=await fetchT(location.pathname,{cache:"no-cache"});if(!r.ok)throw new Error(r.status);return r.text();}
 const inBedienung=()=>Date.now()-lastTouch<120000||/^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName||"")
   ||Object.keys(heatPending).length>0||Object.keys(lichtBusy).length>0||!$("#toast").hidden||!$("#wlan").hidden||!$("#dienste").hidden
   ||!$("#nz-schreib").hidden||!$("#nz-pop").hidden||!$("#s4stat").hidden;   // (ein offener Notiz-Entwurf ginge sonst verloren)
@@ -1686,10 +1696,11 @@ const isNight=()=>{const m=berlinMinutes();return m>=NIGHT_FROM||m<NIGHT_TO;};
 function updateNight(){const on=isNight()&&Date.now()>wakeUntil;
   if(on&&$("#night").hidden){   // offen gelassene Design-Auswahl oder Notiz-Fenster stünden sonst über der Nachtanzeige
     if(!$("#skinpop").hidden)skinPop(false);if(!$("#nz-schreib").hidden)nzSchreibZu();$("#nz-pop").hidden=true;}
+  document.documentElement.classList.toggle("nacht",on);   // Animationen unter der Nachtanzeige anhalten (siehe index.html)
   $("#night").hidden=!on;if(on)renderNight();}
 // Aufwecken mit „click“ (beim Loslassen): So landet das Antippen sicher auf der Nachtanzeige und nicht auf einem
 // Knopf darunter (Licht, Heizung, Futter). Danach sofort frische Abfahrten holen.
-$("#night").addEventListener("click",()=>{wakeUntil=Date.now()+2*60000;updateNight();if(typeof loadDeps==="function")loadDeps();});
+$("#night").addEventListener("click",()=>{wakeUntil=Date.now()+2*60000;updateNight();if(typeof loadDeps==="function")loadDeps();if(typeof loadPet==="function")loadPet();});
 // Nachtanzeige: Uhr, Wetter, nächste S4, nächster Dienst – gedimmt
 function nightRefresh(){const n=document.getElementById("night");if(n&&!n.hidden)renderNight();}
 // Futter & Katzenklo: Zeitpunkte im Lichtdienst (gleicher Stand auf allen Geräten), orange nach 12 h bzw. 24 h
@@ -1750,7 +1761,7 @@ document.querySelectorAll(".petb").forEach(b=>b.onclick=async()=>{
     toast(`${art==="futter"?"Gefüttert":"Klo gereinigt"} um ${fmtT(Date.now())}`,async()=>{petData=await lichtCall("/kater",{art,zurueck:true});renderPet();});}
   catch(e){toast("Nicht gespeichert: "+errTxt(e));}
 });
-setTimeout(loadPet,1200);setInterval(()=>{if(!document.hidden){renderPet();nzZeigen();}},30000);setInterval(()=>{if(!document.hidden)loadPet();},2*60000);   // alle 2 min: Futter, Klo und Notizen
+setTimeout(loadPet,1200);setInterval(()=>{if(!document.hidden){renderPet();nzZeigen();}},30000);let petTick=0;setInterval(()=>{if(document.hidden)return;const night=typeof isNight==="function"&&isNight()&&Date.now()>wakeUntil;if(!night||petTick++%3===0)loadPet();},2*60000);   // alle 2 min (nachts alle 6 min): Futter, Klo und Notizen
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)loadPet();});
 
 /* ---------- Notizen an der Wand ----------
@@ -1973,25 +1984,26 @@ $("#wlan-pw").addEventListener("click",e=>e.stopPropagation());
 // Der Hausherr: Das Bild liegt im geschützten Speicher und wird nur mit Kalender-Passwort oder Dienst-PIN herausgegeben;
 // ohne bleibt die Burg. Gezeigt wird es erst, wenn eines der beiden Geheimnisse auf diesem Gerät nachweislich stimmt
 // (Termine oder Dienste sind entschlüsselt). Einmal geholt, bleibt es auf dem Gerät gemerkt (Abruf höchstens täglich).
-let katerOk=false, katerBusy=false, katerAt=0;
+let katerOk=false, katerLeer=false, katerBusy=false, katerAt=0;
 const katerBild=src=>{if(/^data:image\/(jpeg|png|webp|avif|gif);base64,[A-Za-z0-9+/=]+$/.test(src||"")){document.querySelector(".crest img").src=src;katerOk=true;}};
 async function katerTry(){
   if(katerBusy||!(calData||privData))return;
   if(!katerOk)katerBild(store.get("ablage:kater",null));
-  if(Date.now()-katerAt<(katerOk?24*3600e3:10*60e3))return;
+  if(Date.now()-katerAt<(katerOk||katerLeer?24*3600e3:10*60e3))return;   // kein Bild abgelegt: nur einmal am Tag nachfragen
   katerBusy=true;katerAt=Date.now();
   try{
     for(const [pw,id,da] of [[store.get(CAL_KEY,null),"kater:k",calData],[store.get(PIN_KEY,null),"kater:p",privData]]){
       if(!pw||!da)continue;
-      try{const d=await datenHolen("kater",pw,id);if(d.inhalt?.img){store.set("ablage:kater",d.inhalt.img);katerBild(d.inhalt.img);break;}}
-      catch(e){if(e.status===0||e.status===429)break;}   // keine Verbindung oder gesperrt: später erneut, nichts weiter probieren
+      try{const d=await datenHolen("kater",pw,id);if(d.inhalt?.img){katerLeer=false;store.set("ablage:kater",d.inhalt.img);katerBild(d.inhalt.img);break;}}
+      catch(e){if(e.status===404){katerLeer=true;break;}if(e.status===0||e.status===429)break;}   // keine Verbindung oder gesperrt: später erneut, nichts weiter probieren
     }
   }finally{katerBusy=false;}
 }
 setTimeout(katerTry,3000);setInterval(katerTry,60000);
 function renderNight(){
-  $("#nt-clock").textContent=nowHM();
-  $("#nt-date").textContent=new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",timeZone:"Europe/Berlin"});
+  const setz=(sel,v)=>{const x=$(sel);if(x.textContent!==v)x.textContent=v;};
+  setz("#nt-clock",nowHM());
+  setz("#nt-date",new Date().toLocaleDateString("de-DE",{weekday:"long",day:"numeric",month:"long",timeZone:"Europe/Berlin"}));
   const it=(l,b,sub)=>`<div class="nt-it"><small>${l}</small><b>${b}</b>${sub?`<span>${sub}</span>`:""}</div>`;
   const rows=[];
   if(typeof wxState!=="undefined"&&wxState){const w=wxState;
@@ -2009,7 +2021,7 @@ function renderNight(){
       const tag=k===0?"Heute":k===1?"Morgen":new Date(n.e.d+"T12:00:00").toLocaleDateString("de-DE",{weekday:"long"});
       rows.push(it("Nächster Dienst",`${esc(n.e.von)}–${esc(n.e.bis||"")}`,tag));}
   }
-  $("#nt-rows").innerHTML=rows.join("");
+  const h=rows.join(""), el=$("#nt-rows");if(el._html!==h){el.innerHTML=h;el._html=h;}   // alle 10 s: nur bei Änderung neu aufbauen
 }
 updateNight();setInterval(updateNight,10000);
 
