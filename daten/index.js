@@ -55,6 +55,9 @@ const S4_WEST = /Buchenau|Geltendorf|F[üu]rstenfeldbruck|Puchheim|Eichenau|Graf
 const S4_KURZ = /Leienfels|Pasing|\bLaim\b|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|\bHbf\b|Karlsplatz|Stachus|Heimeranplatz/i;
 const S4_TAGE = 730, S4_AB = 5;                     // so viele Tage bleiben gezählt; „verspätet“ (mit/ohne Grund) ab so vielen Minuten
 const S4_FAHRTEN_TAGE = 90;                         // so lange bleibt jede gezählte Fahrt einzeln gemerkt
+// Neustart der Zählung (einmalig beim nächsten Lauf, wenn der gespeicherte Zähler eine andere Marke trägt): Tage und
+// einzelne Fahrten werden gelöscht; offene und eben gezählte Fahrten bleiben (nichts doppelt, nichts verloren)
+const S4_NEUSTART = "2026-11-26";
 const s4Tag = ms => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
 let s4Merk = null;                                  // Antwort für die Seite kurz merken (eine Minute je Rechner-Instanz)
 
@@ -243,8 +246,13 @@ export class DatenState {
   // damit sich die Regeln später auch für vergangene Fahrten nachrechnen lassen.
   async s4Zaehlen(liste, now) {
     if (!Array.isArray(liste)) return { ok: false };
-    const s = (await this.s.get("s4")) || { seit: s4Tag(now), offen: {}, tage: {}, fertig: {} };
+    let s = (await this.s.get("s4")) || { seit: s4Tag(now), offen: {}, tage: {}, fertig: {}, neu: S4_NEUSTART };
     s.fertig = s.fertig || {};
+    const weg = [];   // Speicherwerte, die am Ende gelöscht werden
+    if (s.neu !== S4_NEUSTART) {
+      for (const tag of Array.isArray(s.fTage) ? s.fTage : []) weg.push("s4f:" + tag);
+      s = { seit: s4Tag(now), offen: s.offen || {}, tage: {}, fertig: s.fertig, fertigAus: s.fertigAus || {}, fTage: [], neu: S4_NEUSTART };
+    }
     const gelistet = new Set();
     for (const d of liste) {
       if (!d || d.label !== "S4" || S4_WEST.test(d.destination || "") || !Number.isFinite(d.plannedDepartureTime)) continue;
@@ -279,8 +287,7 @@ export class DatenState {
       delete s.offen[p]; s.fertig[p] = now; if (f.aus) s.fertigAus[p] = now;
       const n = naechste(+p), spaet = !f.aus && f.rt !== false && n !== null && f.t >= n;
       // v: Aufteilung der Fahrten (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen / ohne Echtzeit) mit eigener
-      // Fahrtenzahl – gibt es erst seit dem 24.11.2026 (an dem Tag erst ab dem Einbau), ältere Fahrten fehlen darin.
-      // ausSp: davon ausgefallen, weil „zu spät“ (gezählt seit dem Abend des 26.11.2026)
+      // Fahrtenzahl (Tage ohne v stammen aus einer älteren Fassung). ausSp: davon ausgefallen, weil „zu spät“
       const tag = s4Tag(+p), z = s.tage[tag] || (s.tage[tag] = { n: 0, kurz: 0, g: {} });
       const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
       (fahrten[tag] || (fahrten[tag] = [])).push({ p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0,
@@ -309,14 +316,15 @@ export class DatenState {
       if (tag < grenze && g.length > 5) z.g = Object.fromEntries(g.sort((a, b) => b[1] - a[1]).slice(0, 5));
     }
     // einzelne Fahrten: je Tag ein Speicherwert, höchstens 300 Fahrten, nach S4_FAHRTEN_TAGE gelöscht
-    const schreiben = {}, weg = [], fGrenze = s4Tag(now - S4_FAHRTEN_TAGE * 864e5);
+    const schreiben = {}, fGrenze = s4Tag(now - S4_FAHRTEN_TAGE * 864e5);
     s.fTage = Array.isArray(s.fTage) ? s.fTage : [];
     for (const [tag, l] of Object.entries(fahrten)) {
-      const alt = await this.s.get("s4f:" + tag);
-      schreiben["s4f:" + tag] = [...(Array.isArray(alt) ? alt : []), ...l].slice(-300);
+      const k = "s4f:" + tag, alt = weg.includes(k) ? [] : await this.s.get(k);   // nach dem Neustart: alte Fahrten nicht übernehmen
+      schreiben[k] = [...(Array.isArray(alt) ? alt : []), ...l].slice(-300);
       if (!s.fTage.includes(tag)) s.fTage.push(tag);
     }
     for (const tag of s.fTage) if (tag < fGrenze) { weg.push("s4f:" + tag); delete schreiben["s4f:" + tag]; }
+    for (let i = weg.length - 1; i >= 0; i--) if (weg[i] in schreiben) weg.splice(i, 1);   // neu geschrieben: nicht löschen
     s.fTage = s.fTage.filter(t => t >= fGrenze).sort();
     s.ok = now;
     schreiben.s4 = s;

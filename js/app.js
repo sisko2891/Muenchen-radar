@@ -405,7 +405,7 @@ addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#dienste").hidden){diens
    Fahrplandaten, deshalb ohne PIN abrufbar. */
 let s4Daten=null, s4Zeit="30", s4Timer=null, s4Fehler=null, s4Geholt=0;
 // Aufteilung (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen) aus z.v: nur Fahrten, bei denen „mit Grund“ schon
-// gezählt wurde (seit 24.11.2026) – „nicht bis Marienplatz“ und die Gründe zählen über den ganzen Zeitraum
+// gezählt wurde (Tage einer älteren Fassung fehlen darin) – „nicht bis Marienplatz“ und die Gründe zählen über den ganzen Zeitraum
 const S4_ZEITEN=[["7","7 Tage"],["30","30 Tage"],["alle","Gesamt"]];
 function s4Zeigen(meldung){
   const box=$("#s4-inhalt");
@@ -454,7 +454,7 @@ function s4Zeigen(meldung){
       <h3>Häufigste Verspätungsgründe <small>ab 1 min</small></h3>
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
     </div></div>
-    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“, seit dem Abend des 26.11.2026; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
+    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
 async function s4Auf(){
   $("#s4stat").hidden=false;s4Zeigen();
