@@ -53,6 +53,8 @@ const S4_URL = "https://www.mvg.de/api/bgw-pt/v3/departures?globalId=de:09162:17
 // dieselben Regeln wie auf der Seite (js/app.js: WEST, KURZ, endetVorher)
 const S4_WEST = /Buchenau|Geltendorf|F[üu]rstenfeldbruck|Puchheim|Eichenau|Grafrath|T[üu]rkenfeld|Sch[öo]ngeising|Freiham|Neuaubing|Gilching|Germering/i;
 const S4_KURZ = /Leienfels|Pasing|\bLaim\b|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|\bHbf\b|Karlsplatz|Stachus|Heimeranplatz/i;
+// Hinweis der MVG „Fährt nur bis Pasing“ o. ä. (das Ziel bleibt dabei oft das ursprüngliche): endet vor dem Marienplatz
+const s4KurzHinweis = t => /\b(nur bis|endet|wendet)\b/i.test(t) && S4_KURZ.test(String(t).replace(/Berg am Laim/gi, ""));
 const S4_TAGE = 730, S4_AB = 5;                     // so viele Tage bleiben gezählt; „verspätet“ (mit/ohne Grund) ab so vielen Minuten
 const S4_FAHRTEN_TAGE = 90;                         // so lange bleibt jede gezählte Fahrt einzeln gemerkt
 // Neustart der Zählung (einmalig beim nächsten Lauf, wenn der gespeicherte Zähler eine andere Marke trägt): Tage und
@@ -282,6 +284,20 @@ export class DatenState {
       for (const tag of Array.isArray(s.fTage) ? s.fTage : []) weg.push("s4f:" + tag);
       s = { seit: s4Tag(now), offen: s.offen || {}, tage: {}, fertig: s.fertig, fertigAus: s.fertigAus || {}, fTage: [], neu: S4_NEUSTART };
     }
+    // Einmalig: schon gezählte Fahrten mit Hinweis „Fährt nur bis Pasing“ o. ä. nachträglich als „nicht bis Marienplatz“
+    if (s.kurzHinweis !== 1) {
+      const fT = Array.isArray(s.fTage) ? s.fTage : [], neu = {};
+      for (const [k, l] of fT.length ? await this.s.get(fT.map(t => "s4f:" + t)) : new Map()) {
+        const z = s.tage[k.slice(4)];
+        if (!Array.isArray(l) || !z) continue;
+        for (const r of l) {
+          if (!r || r.k || r.art || r.a === 1 || (r.rt === 1 && Number.isFinite(r.n) && Number.isFinite(r.t) && r.t >= r.n)) continue;   // Ausfälle zählen dort nicht
+          if (Array.isArray(r.g) && r.g.some(s4KurzHinweis)) { r.k = 1; z.kurz = (z.kurz || 0) + 1; neu[k] = l; }
+        }
+      }
+      if (Object.keys(neu).length) await this.s.put(neu);
+      s.kurzHinweis = 1;
+    }
     // Lücken des Zählers: über 12 min kein Lauf, oder nur Läufe ohne eine einzige S4 Richtung Innenstadt (Datenausfall der
     // MVG, nachts). Was in solche Zeiten fällt, ist unbekannt und zählt nicht als „fehlte“. Eine noch offene Lücke gilt mit.
     s.luecken = (Array.isArray(s.luecken) ? s.luecken : []).filter(l => Array.isArray(l) && l[1] > now - 14 * 864e5);
@@ -305,7 +321,7 @@ export class DatenState {
       const gruende = [...new Set((Array.isArray(d.infos) ? d.infos : []).map(i => String(i?.message ?? "").replace(/\s+/g, " ").trim().slice(0, 80)).filter(Boolean))].slice(0, 4);
       const f = {
         t: Number.isFinite(d.realtimeDepartureTime) ? d.realtimeDepartureTime : p + v * 60e3, v, aus: !!d.cancelled, rt,
-        kurz: !!d.sev || (!/Berg am Laim/i.test(d.destination || "") && S4_KURZ.test(d.destination || "")), g: gruende,
+        kurz: !!d.sev || (!/Berg am Laim/i.test(d.destination || "") && S4_KURZ.test(d.destination || "")) || gruende.some(s4KurzHinweis), g: gruende,
         s: now, r1: alt?.r1 ?? (rt ? now : null), ziel: String(d.destination || "").slice(0, 40),
       };
       // Echtzeit gerade weg: den letzten Echtzeitstand behalten (auch gestrichen, Ziel, Ersatzverkehr und Gründe)
