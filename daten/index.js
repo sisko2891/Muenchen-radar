@@ -287,8 +287,9 @@ export class DatenState {
     s.luecken = (Array.isArray(s.luecken) ? s.luecken : []).filter(l => Array.isArray(l) && l[1] > now - 14 * 864e5);
     const s4Da = liste.some(d => d && d.label === "S4" && !S4_WEST.test(d.destination || "") && Number.isFinite(d.plannedDepartureTime));
     const letzt = Number.isFinite(s.okS4) ? s.okS4 : s.ok, lang = !Number.isFinite(letzt) || now - letzt > 12 * 60e3;
-    if (s4Da) { if (lang && Number.isFinite(letzt)) s.luecken = [...s.luecken, [letzt, now]].slice(-60); s.okS4 = now; }
-    const luecken = !s4Da && lang ? [...s.luecken, [Number.isFinite(letzt) ? letzt : -Infinity, now]] : s.luecken;
+    const von = Number.isFinite(letzt) ? letzt : now - 6 * 3600e3;   // noch nie gelaufen: was davor lag, ist unbekannt
+    if (s4Da) { if (lang) s.luecken = [...s.luecken, [von, now]].slice(-60); s.okS4 = now; }
+    const luecken = !s4Da && lang ? [...s.luecken, [von, now]] : s.luecken;
     const hilfe = (await this.s.get("s4hilfe")) || {};
     const bauAktiv = p => (Array.isArray(hilfe.bau) ? hilfe.bau : []).some(b => b && b[0] <= p && p <= b[1]);
     const sollTag = tag => (hilfe.soll && Array.isArray(hilfe.soll.tage?.[tag]) ? hilfe.soll.tage[tag] : null);
@@ -370,16 +371,21 @@ export class DatenState {
     }
     // Abgleich mit dem Soll-Fahrplan: Fahrten, die laut Plan fahren sollten, die die MVG aber nie angezeigt hat („fehlte“).
     // Geprüft wird 100 min nach der geplanten Abfahrt (bis dahin ist jede angezeigte Fahrt gezählt); in Zählerlücken und
-    // während befristeter, angekündigter S4-Baustellen zählt eine fehlende Fahrt nicht.
+    // während befristeter, angekündigter S4-Baustellen zählt eine fehlende Fahrt nicht. Nachbarprobe: Sie zählt nur, wenn
+    // die MVG davor und danach (je bis 75 min) eine Soll-Fahrt angezeigt hat – passt der Soll-Fahrplan nicht zum gefahrenen
+    // (Fahrplanwechsel, kurzfristig geänderter Takt, lange nicht angezeigte Strecken), entsteht so kein falscher Ausfall.
     const sollGrenze = now - 100 * 60e3;
     if (hilfe.soll && hilfe.soll.tage) {
       const ab = Number.isFinite(s.sollBis) ? s.sollBis : sollGrenze;
-      const bekannt = [...Object.keys(s.offen), ...Object.keys(s.fertig)].map(Number);
+      const bekannt = [...Object.keys(s.offen), ...Object.keys(s.fertig)].map(Number), gesehen = q => bekannt.some(b => Math.abs(b - q) <= 3 * 60e3);
+      const alleSoll = [-1, 0, 1].flatMap(k => sollTag(s4Tag(sollGrenze + k * 864e5)) || []).map(x => x[0] * 60e3).filter(Number.isFinite);
       for (const tag of [...new Set([s4Tag(ab), s4Tag(sollGrenze)])]) {
         for (const x of sollTag(tag) || []) {
           const p = x[0] * 60e3;
-          if (!(p > ab && p <= sollGrenze) || bekannt.some(b => Math.abs(b - p) <= 3 * 60e3)) continue;
+          if (!(p > ab && p <= sollGrenze) || gesehen(p)) continue;
           if (luecken.some(l => l[0] < p + 5 * 60e3 && l[1] > p - 45 * 60e3)) continue;   // Zähler sah nichts: unbekannt
+          const nachbar = r => alleSoll.some(q => r * (q - p) > 0 && Math.abs(q - p) <= 75 * 60e3 && gesehen(q));
+          if (!nachbar(-1) || !nachbar(1)) continue;   // Nachbarprobe
           const ziel = String(hilfe.soll.ziele?.[x[1]] ?? "").slice(0, 40), b = bauAktiv(p), t = tagVon(p);
           merken(t.tag, { p, t: p, v: 0, rt: 0, a: 0, k: 0, art: b ? "b" : "f", n: null, s: null, r1: null, z: ziel, g: [] });
           if (b) { t.v.bau = (t.v.bau || 0) + 1; continue; }
@@ -432,7 +438,8 @@ export class DatenState {
       }
       try {
         const l = await holen(S4_MELD_URL), bau = [];
-        for (const m of Array.isArray(l) ? l : []) {
+        if (!Array.isArray(l)) throw new Error("unerwartete Antwort");
+        for (const m of l) {
           if (!m || m.type !== "SCHEDULE_CHANGE" || !(Array.isArray(m.lines) && m.lines.some(x => x?.label === "S4"))) continue;
           const fenster = Array.isArray(m.incidentDurations) && m.incidentDurations.length ? m.incidentDurations : [{ from: m.validFrom, to: m.validTo }];
           for (const f of fenster) if (Number.isFinite(f?.from) && Number.isFinite(f?.to) && f.to > f.from && f.to - f.from <= S4_BAU_MAX) bau.push([f.from, f.to, String(m.title || "")]);
@@ -449,10 +456,15 @@ export class DatenState {
         if (Array.isArray(l)) tage[tag] = l.filter(x => Array.isArray(x) && Number.isFinite(x[0]) && Number.isInteger(x[1])).slice(0, 200).map(x => [x[0], x[1]]);
       }
       neu.soll = { version: String(so.version || "").slice(0, 20), quelle: String(so.quelle || "").slice(0, 120), bis: Object.keys(so.tage).sort().pop() || "",
-        ziele: (Array.isArray(so.ziele) ? so.ziele : []).slice(0, 50).map(x => String(x).slice(0, 40)), tage };
+        ziele: (Array.isArray(so.ziele) ? so.ziele : []).slice(0, 50).map(x => String(x).slice(0, 40)), tage, geholt: now };
     }
-    if (Array.isArray(body.bau)) neu.bau = body.bau.filter(b => Array.isArray(b) && Number.isFinite(b[0]) && Number.isFinite(b[1]) && b[1] > now - 14 * 864e5)
-      .slice(0, 50).map(b => [b[0], b[1], String(b[2] || "").slice(0, 120)]);
+    // Baustellen: die gerade gemeldeten, dazu die schon beendeten der letzten 14 Tage (die MVG nimmt eine Meldung nach ihrem
+    // Ende aus der Liste – Soll-Fahrten an ihrem Ende werden aber erst 100 min später geprüft)
+    if (Array.isArray(body.bau)) {
+      const gut = b => Array.isArray(b) && Number.isFinite(b[0]) && Number.isFinite(b[1]) && b[1] > now - 14 * 864e5;
+      const l = [...body.bau.filter(gut), ...neu.bau.filter(b => gut(b) && b[1] <= now)].map(b => [b[0], b[1], String(b[2] || "").slice(0, 120)]);
+      neu.bau = l.filter((b, i) => l.findIndex(c => c[0] === b[0] && c[1] === b[1]) === i).slice(0, 50);
+    }
     await this.s.put("s4hilfe", neu);
     return { ok: true };
   }
@@ -481,8 +493,11 @@ export class DatenState {
     const fTage = (Array.isArray(s.fTage) ? s.fTage : []).filter(t => t >= new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - 29 * 864e5).toISOString().slice(0, 10));
     const fWerte = fTage.length ? await this.s.get(fTage.map(t => "s4f:" + t)) : new Map();
     const ausfaelle = [];
-    for (const [k, l] of fWerte) for (const r of Array.isArray(l) ? l : []) if (r && ["g", "s", "v", "f"].includes(r.art) && Number.isFinite(r.p))
-      ausfaelle.push({ tag: k.slice(4), p: r.p, t: Number.isFinite(r.t) ? r.t : r.p, v: zahl(r.v), art: r.art, z: typeof r.z === "string" ? r.z : "", n: Number.isFinite(r.n) ? r.n : null, g: Array.isArray(r.g) && typeof r.g[0] === "string" ? r.g[0] : "" });
+    // Fahrten einer früheren Fassung tragen keine Art: gestrichen (a) bzw. „zu spät“ (Echtzeit, abgefahren ab der nächsten)
+    const artVon = r => (typeof r.art === "string" ? r.art : r.a === 1 ? "g" : r.rt === 1 && Number.isFinite(r.n) && Number.isFinite(r.t) && r.t >= r.n ? "s" : "");
+    for (const [k, l] of fWerte) for (const r of Array.isArray(l) ? l : []) { const art = r ? artVon(r) : "";
+      if (["g", "s", "v", "f"].includes(art) && Number.isFinite(r.p))
+        ausfaelle.push({ tag: k.slice(4), p: r.p, t: Number.isFinite(r.t) ? r.t : r.p, v: zahl(r.v), art, z: typeof r.z === "string" ? r.z : "", n: Number.isFinite(r.n) ? r.n : null, g: Array.isArray(r.g) && typeof r.g[0] === "string" ? r.g[0] : "" }); }
     ausfaelle.sort((a, b) => b.p - a.p);
     const summe = ab => {
       const z = { n: 0, kurz: 0 }, v = Object.fromEntries(VK.map(k => [k, 0])), h = { n: 0, aus: 0, ...Object.fromEntries(HK.map(k => [k, 0])) }, g = {};
@@ -508,13 +523,18 @@ export class DatenState {
     const vorTagen = k => new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - k * 864e5).toISOString().slice(0, 10);
     // „gezählt seit“: nach zwei Jahren wandert der Anfang mit (alte Tage sind gelöscht)
     const erster = Object.keys(s.tage).sort()[0], seit = s.seit && erster && erster > s.seit ? erster : s.seit;
-    // Verlauf je Woche (die letzten 12 mit Aufteilung, älteste zuerst): mit = Fahrten mit bekanntem Ausgang; die Anteile sind
-    // zugleich die hochgerechneten aller Fahrten der Woche
+    // Verlauf je Woche (die letzten 12 mit Aufteilung, älteste zuerst), hochgerechnet wie die Summen: Fahrten ohne Echtzeit
+    // bekommen die Verteilung der gefahrenen Fahrten der Woche (verspätet, „zu spät“); mit = Fahrten, auf die sich sp und aus
+    // beziehen (ohne Fahrten mit Echtzeit in der Woche bleiben die ohne Echtzeit draußen)
+    const r3 = x => Math.round(x * 1000) / 1000;
     const verlauf = Object.entries(wochen).filter(([ab]) => /^\d{4}-\d{2}-\d{2}$/.test(ab)).sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-12)
-      .map(([ab, w]) => ({ ab, n: w.n, mit: Math.max(0, w.n - w.oe), sp: w.og + w.mg, aus: w.aus }));
+      .map(([ab, w]) => { const b = gefahren(w), sp = w.og + w.mg;
+        return w.oe > 0 && b > 0 ? { ab, n: w.n, mit: w.n, sp: r3(sp * (1 + w.oe / b)), aus: r3(w.aus + w.ausSp * w.oe / b) }
+          : { ab, n: w.n, mit: Math.max(0, w.n - w.oe), sp, aus: w.aus }; });
     const so = hilfe.soll;
     return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) }, wochen: verlauf,
-      soll: so ? { version: so.version, quelle: so.quelle, bis: so.bis } : null };
+      // heute: der Zähler hat den Soll-Fahrplan für heute (sonst gleicht er gerade nicht ab); geholt: letzter erfolgreicher Abruf
+      soll: so ? { version: so.version, quelle: so.quelle, bis: so.bis, geholt: Number.isFinite(so.geholt) ? so.geholt : null, heute: Array.isArray(so.tage?.[s4Tag(now)]) } : null };
   }
 
   // Name für Freistellungen: Ablage + Kurzmarke ihres einzigen Zugangs. Ablagen mit mehreren Zugängen (Bild: PIN und

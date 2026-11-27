@@ -407,12 +407,12 @@ addEventListener("keydown",e=>{if(e.key==="Escape"&&!$("#dienste").hidden){diens
    Fahrplandaten, deshalb ohne PIN abrufbar. */
 let s4Daten=null, s4Zeit="30", s4Timer=null, s4Fehler=null, s4Geholt=0;
 let s4WvWahl=-1;   // im Wochenverlauf angetippte Woche (-1 = die neueste)
-// Verlauf je Woche (nur „Gesamt“): Säule = Anteil ab 5 min verspätet + ausgefallen, bezogen auf die Fahrten mit Echtzeit
-// (= hochgerechneter Anteil aller Fahrten der Woche). Antippen einer Säule zeigt ihre Werte darunter.
+// Verlauf je Woche (nur „Gesamt“): Säule = Anteil ab 5 min verspätet + ausgefallen. Der Zähler rechnet die Fahrten ohne
+// Echtzeit hoch wie in den Summen (sp, aus als Kommazahlen, bezogen auf mit). Antippen einer Säule zeigt ihre Werte darunter.
 function s4Verlauf(roh){
-  const ganz=x=>{x=+x;return Number.isFinite(x)?Math.max(0,Math.round(x)):0;};
+  const ganz=x=>{x=+x;return Number.isFinite(x)?Math.max(0,Math.round(x)):0;}, kz=x=>{x=+x;return Number.isFinite(x)&&x>0?x:0;};
   const l=(Array.isArray(roh)?roh:[]).filter(w=>w&&typeof w==="object"&&/^\d{4}-\d{2}-\d{2}$/.test(w.ab||"")).slice(-12).map(w=>{
-    const n=ganz(w.n), mit=Math.min(n,ganz(w.mit)), aus=Math.min(mit,ganz(w.aus)), sp=Math.min(mit-aus,ganz(w.sp));
+    const n=ganz(w.n), mit=Math.min(n,ganz(w.mit)), aus=Math.min(mit,kz(w.aus)), sp=Math.min(mit-aus,kz(w.sp));
     const d=new Date(w.ab+"T12:00:00Z"), dd=new Date(d.getTime()+3*864e5), j=new Date(Date.UTC(dd.getUTCFullYear(),0,4));   // Kalenderwoche nach ISO
     const kw=1+Math.round(((dd-j)/864e5-3+((j.getUTCDay()+6)%7))/7);
     return {ab:w.ab,kw,n,mit,sp,aus,pSp:mit?sp/mit:0,pAus:mit?aus/mit:0};});
@@ -475,10 +475,11 @@ function s4Zeigen(meldung){
   const gross=(a,b)=>b?`${proz(a,b)}<small>%</small>`:"–", klein=(a,b)=>b?proz(a,b)+" %":"–", breite=(a,b)=>b?(a/b*100).toFixed(2)+"%":"0";
   const schnitt=(m,k)=>k?`Ø +${Math.round(m/k)} min`:"";
   // Soll-Fahrplan (vom Zähler): Stand aus der Version (JJJJMMTT), sonst die Version selbst
-  const so=s4Daten.soll&&typeof s4Daten.soll==="object"&&typeof s4Daten.soll.version==="string"?s4Daten.soll:null;
+  // (heute=false: der Zähler hat gerade keinen Soll-Fahrplan für heute und gleicht nicht ab)
+  const so=s4Daten.soll&&typeof s4Daten.soll==="object"&&typeof s4Daten.soll.version==="string"&&s4Daten.soll.heute!==false?s4Daten.soll:null;
   const sv=so?so.version.slice(0,20):"", sollStand=/^20\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(sv)?`Stand ${sv.slice(6)}.${sv.slice(4,6)}.${sv.slice(0,4)}`:sv?"Version "+sv:"";
   const basis=so?"Fahrten laut Fahrplan":"Fahrten gezählt";
-  const ausArt=[[ausG,"gestrichen"],[rAusSp,"zu spät",hAus],[ausVw,"verschwunden"],[ausFe,"fehlten im Fahrplan der MVG"]].filter(x=>x[0]).map(([k,t,s])=>`${s?"≈ ":""}${fz(k)} ${t}`).join(" · ");
+  const ausArt=[[ausG,"gestrichen"],[rAusSp,"zu spät",hAus],[ausVw,"verschwunden"],[ausFe,ausFe===1?"fehlte im Fahrplan der MVG":"fehlten im Fahrplan der MVG"]].filter(x=>x[0]).map(([k,t,s])=>`${s?"≈ ":""}${fz(k)} ${t}`).join(" · ");
   // [Art, Bezeichnung, Zusatz, angezeigte Zahl, Anteil (mit Kommastellen)]
   const zeilen=[["ok","pünktlich","unter 5 min",rOk,OK],["mg","ab 5 min, mit Grund",schnitt(minMg,MG),rMg,MG],["og","ab 5 min, ohne Grund",schnitt(minOg,OG),rOg,OG],["aus","ausgefallen",ausArt,rAus,AUS]];
   if(OE>=0.5)zeilen.push(["oe","ohne Echtzeit","Verspätung unbekannt",rOe,OE]);
@@ -486,7 +487,7 @@ function s4Zeigen(meldung){
     he?`${he===1?"1 Fahrt":fz(he)+" Fahrten"} ohne Echtzeit („laut Fahrplan“) ${he===1?"ist":"sind"} nach dem Schnitt ihrer Woche verteilt (geschätzt).`:"",
     bau?`${bau===1?"1 Fahrt entfiel":fz(bau)+" Fahrten entfielen"} wegen angekündigter Bauarbeiten – ${bau===1?"sie zählt":"sie zählen"} nicht.`:""].filter(Boolean).join(" ");
   // einzelne Ausfälle (vom Zähler: höchstens die 40 neuesten der letzten 30 Tage); fehlt die Liste (ältere Fassung), kein Abschnitt
-  const ausL=Array.isArray(z.ausfaelle)?z.ausfaelle.filter(a=>a&&typeof a==="object"&&Number.isFinite(a.p)&&a.art in S4_ARTEN).slice(0,40).map(a=>({p:a.p,art:a.art,
+  const ausL=Array.isArray(z.ausfaelle)?z.ausfaelle.filter(a=>a&&typeof a==="object"&&Number.isFinite(a.p)&&Object.hasOwn(S4_ARTEN,a.art)).slice(0,40).map(a=>({p:a.p,art:a.art,
     t:Number.isFinite(a.t)?a.t:a.p,v:ganz(a.v),n:Number.isFinite(a.n)?a.n:null,z:typeof a.z==="string"?a.z.slice(0,40):"",g:typeof a.g==="string"?a.g.slice(0,80):""})):null;
   $("#s4-stand").textContent=seit?`gezählt seit ${seit}`:"";
   box.innerHTML=`<div class="s4-leiste"><div class="s4-tabs" role="group" aria-label="Zeitraum">${S4_ZEITEN.map(([k,t])=>`<button type="button" data-z="${k}" aria-pressed="${k===s4Zeit}">${t}</button>`).join("")}</div>
@@ -507,9 +508,9 @@ function s4Zeigen(meldung){
       ${hinweise?`<p class="s4-hr">${hinweise}</p>`:""}
     </div><div>
       ${ausL?`<h3>Ausfälle im Einzelnen <small>neueste zuerst${s4Zeit==="alle"?" · letzte 30 Tage":""}</small></h3>
-      <div class="s4-al">${ausL.length?(s4AlleAus?ausL:ausL.slice(0,4)).map(s4Ausfall).join(""):`<div class="empty">${n?"Keine Ausfälle in diesem Zeitraum.":"Noch keine Fahrten gezählt."}</div>`}</div>
+      <div class="s4-al">${ausL.length?(s4AlleAus?ausL:ausL.slice(0,4)).map(s4Ausfall).join(""):`<div class="empty">${!n?"Noch keine Fahrten gezählt.":aus?"Für diesen Zeitraum sind keine einzelnen Ausfälle gespeichert (nur die letzten 30 Tage).":"Keine Ausfälle in diesem Zeitraum."}</div>`}</div>
       ${ausL.length>4?`<button type="button" class="s4-mehr" data-aus aria-expanded="${s4AlleAus}">${s4AlleAus?"Weniger zeigen":`Alle ${fz(ausL.length)} zeigen`}</button>`:""}
-      ${aus>ausL.length&&(s4AlleAus||ausL.length<=4)?`<p class="s4-hr">Einzeln gezeigt sind die neuesten ${fz(ausL.length)} (aus den letzten 30 Tagen, höchstens 40).</p>`:""}`:""}
+      ${ausL.length&&aus>ausL.length&&(s4AlleAus||ausL.length<=4)?`<p class="s4-hr">Einzeln gezeigt sind die neuesten ${fz(ausL.length)} (aus den letzten 30 Tagen, höchstens 40).</p>`:""}`:""}
       <h3${ausL?' class="s4-ab"':""}>Häufigste Ursachen <small>Verspätungen ab 1 min und Ausfälle</small></h3>
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
       ${s4Zeit==="alle"?s4Verlauf(s4Daten.wochen):""}
@@ -532,7 +533,9 @@ $("#deps").addEventListener("click",e=>{if(!e.target.closest("a,button"))s4Auf()
 $("#s4stat").addEventListener("click",e=>{
   const wv=e.target.closest("button[data-wv]");
   if(wv){s4WvWahl=+wv.dataset.wv;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-wv="${s4WvWahl}"]`)?.focus();clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
-  if(e.target.closest("button[data-aus]")){s4AlleAus=!s4AlleAus;s4Zeigen();$("#s4-inhalt").querySelector("button[data-aus]")?.focus();clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
+  if(e.target.closest("button[data-aus]")){s4AlleAus=!s4AlleAus;s4Zeigen();const k=$("#s4-inhalt").querySelector("button[data-aus]");
+    k?.focus({preventScroll:true});if(!s4AlleAus)k?.scrollIntoView({block:"nearest"});   // aufgeklappt: Lesestelle bleibt; zugeklappt: Knopf ins Bild
+    clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
   const b=e.target.closest("button[data-z]");
   if(b){s4Zeit=b.dataset.z;s4AlleAus=false;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-z="${s4Zeit}"]`)?.focus();   // Fokus bleibt auf der Auswahl
     clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}   // wer umschaltet, liest noch: Uhr neu starten
