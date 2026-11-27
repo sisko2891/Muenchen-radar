@@ -371,22 +371,27 @@ export class DatenState {
     }
     // Abgleich mit dem Soll-Fahrplan: Fahrten, die laut Plan fahren sollten, die die MVG aber nie angezeigt hat („fehlte“).
     // Geprüft wird 100 min nach der geplanten Abfahrt (bis dahin ist jede angezeigte Fahrt gezählt); in Zählerlücken und
-    // während befristeter, angekündigter S4-Baustellen zählt eine fehlende Fahrt nicht. Nachbarprobe: Sie zählt nur, wenn
-    // die MVG davor und danach (je bis 75 min) eine Soll-Fahrt angezeigt hat – passt der Soll-Fahrplan nicht zum gefahrenen
-    // (Fahrplanwechsel, kurzfristig geänderter Takt, lange nicht angezeigte Strecken), entsteht so kein falscher Ausfall.
+    // während befristeter, angekündigter S4-Baustellen zählt sie als Baustelle. Nachbarprobe je Block: Nie angezeigte
+    // Soll-Fahrten zwischen zwei angezeigten zählen nur, wenn es höchstens drei am Stück sind – passt der Soll-Fahrplan
+    // nicht zum gefahrenen (Fahrplanwechsel, kurzfristig geänderter Takt, lange nichts angezeigt), entsteht kein falscher Ausfall.
     const sollGrenze = now - 100 * 60e3;
     if (hilfe.soll && hilfe.soll.tage) {
       const ab = Number.isFinite(s.sollBis) ? s.sollBis : sollGrenze;
       const bekannt = [...Object.keys(s.offen), ...Object.keys(s.fertig)].map(Number), gesehen = q => bekannt.some(b => Math.abs(b - q) <= 3 * 60e3);
-      const alleSoll = [-1, 0, 1].flatMap(k => sollTag(s4Tag(sollGrenze + k * 864e5)) || []).map(x => x[0] * 60e3).filter(Number.isFinite);
+      const sollZeiten = [...new Set([-1, 0, 1].flatMap(k => sollTag(s4Tag(sollGrenze + k * 864e5)) || []).map(x => x[0] * 60e3).filter(Number.isFinite))].sort((a, b) => a - b);
+      // Größe des Blocks nie angezeigter Soll-Fahrten um p (bis zur nächsten angezeigten davor und danach; ohne beide: unendlich)
+      const block = p => { const i = sollZeiten.indexOf(p); let n = 1, a = i - 1, e = i + 1;
+        while (a >= 0 && !gesehen(sollZeiten[a])) { a--; if (++n > 3) return n; }
+        while (e < sollZeiten.length && !gesehen(sollZeiten[e])) { e++; if (++n > 3) return n; }
+        return i < 0 || a < 0 || e >= sollZeiten.length ? Infinity : n; };
       for (const tag of [...new Set([s4Tag(ab), s4Tag(sollGrenze)])]) {
         for (const x of sollTag(tag) || []) {
           const p = x[0] * 60e3;
           if (!(p > ab && p <= sollGrenze) || gesehen(p)) continue;
           if (luecken.some(l => l[0] < p + 5 * 60e3 && l[1] > p - 45 * 60e3)) continue;   // Zähler sah nichts: unbekannt
-          const nachbar = r => alleSoll.some(q => r * (q - p) > 0 && Math.abs(q - p) <= 75 * 60e3 && gesehen(q));
-          if (!nachbar(-1) || !nachbar(1)) continue;   // Nachbarprobe
-          const ziel = String(hilfe.soll.ziele?.[x[1]] ?? "").slice(0, 40), b = bauAktiv(p), t = tagVon(p);
+          const b = bauAktiv(p);
+          if (!b && block(p) > 3) continue;   // Nachbarprobe
+          const ziel = String(hilfe.soll.ziele?.[x[1]] ?? "").slice(0, 40), t = tagVon(p);
           merken(t.tag, { p, t: p, v: 0, rt: 0, a: 0, k: 0, art: b ? "b" : "f", n: null, s: null, r1: null, z: ziel, g: [] });
           if (b) { t.v.bau = (t.v.bau || 0) + 1; continue; }
           t.z.n++; t.v.n++; t.v.aus++; t.v.ausFe = (t.v.ausFe || 0) + 1;

@@ -163,8 +163,9 @@ def fahrplan_pruefen(t, seite, dienste, herkunft, jetzt):
         t.p("fahrplan", False, "S4-Zähler kennt den Soll-Fahrplan nicht")
         return
     # der Zähler holt ihn stündlich von der Seite: Stand von heute und zuletzt vor höchstens gut einem Tag geholt
-    g = so.get("geholt")
-    ok = so.get("heute") is True and isinstance(g, (int, float)) and jetzt.timestamp() * 1000 - g < 26 * 3600e3
+    # (fährt laut Soll heute gar keine S4, etwa bei einer Vollsperrung, hat auch der Zähler keinen Tag „heute“)
+    g, heute = so.get("geholt"), jetzt.astimezone(ZoneInfo("Europe/Berlin")).date().isoformat()
+    ok = (so.get("heute") is True or not tage.get(heute)) and isinstance(g, (int, float)) and jetzt.timestamp() * 1000 - g < 26 * 3600e3
     t.p("fahrplan", ok, "Soll-Fahrplan der S4 aktuell" if ok else "S4-Zähler holt den Soll-Fahrplan nicht mehr")
 
 
