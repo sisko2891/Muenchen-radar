@@ -168,9 +168,10 @@ export class WegState {
     if (!key || !a || !b) throw Object.assign(new Error("Arbeitsweg nicht eingerichtet"), { code: 501 });
     const t = new Date(ankunft || NaN);
     if (isNaN(t)) throw Object.assign(new Error("Ankunftszeit fehlt"), { code: 400 });
-    // nur bevorstehende Ankünfte (die Seite fragt den nächsten Dienst ab) – sonst kostete jede beliebige Minute einen TomTom-Abruf
+    // nur bevorstehende Ankünfte bis zur Reichweite des Dienstplans (die Seite fragt den nächsten Dienst ab, auch Wochen vorher
+    // einmal zur Probe) – sonst kostete jede beliebige Minute einen TomTom-Abruf
     const d = t.getTime() - Date.now();
-    if (d < -5 * 60e3 || d > 8 * 864e5) throw Object.assign(new Error("Ankunftszeit außerhalb 0–8 Tage"), { code: 400 });
+    if (d < -5 * 60e3 || d > 45 * 864e5) throw Object.assign(new Error("Ankunftszeit außerhalb 0–45 Tage"), { code: 400 });
     const ck = t.toISOString().slice(0, 16);
     const cache = (await this.s.get("vk")) || {};
     for (const k of Object.keys(cache)) if (cache[k].until < Date.now()) delete cache[k];

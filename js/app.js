@@ -894,7 +894,8 @@ function fitCal(){
     else if(card&&c2.bottom>r.bottom+1){const k=card.getBoundingClientRect();card.style.minHeight=Math.round(c2.bottom-k.top)+"px";}}
 }
 addEventListener("resize",()=>{if(calData)fitCal();});
-if(window.ResizeObserver)new ResizeObserver(()=>{if(calData)fitCal();}).observe(document.querySelector(".hero-right"));
+// Feld rechts und Tafel darüber beobachten: Ändert sich eine Höhe (Störungshinweis, Abfahrtszeilen), passt der Kalender sich an
+if(window.ResizeObserver){const ro=new ResizeObserver(()=>{if(calData)fitCal();});ro.observe(document.querySelector(".hero-right"));const tf=document.querySelector(".hero-left>.board");if(tf)ro.observe(tf);}
 // holt die Termine mit diesem Passwort und entschlüsselt sie; das Chiffrat wird für Netzaussetzer auf dem Gerät gemerkt
 async function calHolen(pw){
   const d=await datenHolen("kalender",pw);

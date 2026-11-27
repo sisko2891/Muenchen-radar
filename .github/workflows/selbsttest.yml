@@ -5,7 +5,7 @@ name: Wöchentlicher Selbsttest
 # zeigt bei einem Fehler – oder wenn der letzte Test älter als 9 Tage ist – einen Hinweis an der Wand. Veröffentlicht wird
 # die Datei mit dem nächsten regulären Datenabgleich.
 # Angestoßen montags vom Zeitgeber bei Cloudflare (Dienst daten/); GitHubs eigener Zeitplan ist nur die Reserve – der
-# zweite Anstoß desselben Tages tut nichts (Test jünger als 5 Tage).
+# zweite Anstoß desselben Tages tut nichts (Test jünger als 20 Stunden).
 
 on:
   schedule:
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
     inputs:
       anlass:
-        description: "hand = jetzt prüfen · zeitplan = nur, wenn der letzte Test älter als 5 Tage ist"
+        description: "hand = jetzt prüfen · zeitplan = nur, wenn der letzte Test älter als 20 Stunden ist"
         default: hand
 
 permissions:
@@ -52,6 +52,7 @@ jobs:
           export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
           werkzeug/git-speichern.sh "Selbsttest" || { echo "::error::Ergebnis konnte nicht gespeichert werden"; exit 1; }
       - name: Ergebnis bewerten
+        if: steps.test.outputs.geprueft == '1'
         run: |
           python3 -c "import json,sys; sys.exit(0 if json.load(open('data/selbsttest.json')).get('ok') else 1)" \
             || { echo "::error::Selbsttest hat Fehler gefunden (siehe oben) – die Seite zeigt einen Hinweis"; exit 1; }

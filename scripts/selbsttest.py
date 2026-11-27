@@ -6,7 +6,8 @@ Texte („Heizung: Anmeldung bei tado erneuern“) – keine Zeiten von Diensten
 Passwörter (Secrets) reisen nur als Kopfzeile zum jeweiligen Dienst und werden nie ausgegeben.
 
 Umgebung: GITHUB_REPOSITORY, GH_TOKEN (Abläufe lesen), HEIZUNG_PASS, LICHT_PASS, WEG_PASS (fehlt eins: Prüfung übersprungen),
-          SELBSTTEST_ANLASS ("zeitplan": nichts tun, wenn der letzte Test jünger als 5 Tage ist).
+          SELBSTTEST_ANLASS ("zeitplan": nichts tun, wenn der letzte Test jünger als 20 Stunden ist – so bleibt nach einem
+          Start von Hand der Montagstest nicht aus, der zweite Anstoß desselben Montags aber schon).
 """
 import hashlib, json, os, re, sys, urllib.error, urllib.request
 from datetime import datetime, timezone
@@ -89,8 +90,11 @@ def ablauf_pruefen(t, repo, token, jetzt):
     if not isinstance(laeufe, list):
         t.p("abgleich", False, "Datenabgleich nicht prüfbar (Abläufe nicht lesbar)")
         return
-    # Zeitgeber: tagsüber (Weltzeit 4–22 Uhr) stößt Cloudflare den Abgleich stündlich an
-    neuester = min((a for a in (alter_h(l.get("created_at"), jetzt) for l in laeufe) if a is not None), default=None)
+    # Zeitgeber: tagsüber (Weltzeit 4–22 Uhr) stößt Cloudflare den Abgleich stündlich an – gezählt werden nur Anstöße von
+    # außen (workflow_dispatch), nicht GitHubs eigener Zeitplan, der sonst einen ausgefallenen Zeitgeber verdeckte
+    c2, _, d2 = holen(f"https://api.github.com/repos/{repo}/actions/workflows/update.yml/runs?event=workflow_dispatch&per_page=5", kopf)
+    anst = (json_von(d2) or {}).get("workflow_runs") if c2 == 200 else None
+    neuester = min((a for a in (alter_h(l.get("created_at"), jetzt) for l in anst or []) if a is not None), default=None)
     if 5 <= jetzt.hour <= 22:
         t.p("zeitgeber", neuester is not None and neuester < 2.5, "Zeitgeber stößt den Abgleich an" if neuester is not None and neuester < 2.5 else "Zeitgeber stößt den Abgleich nicht mehr an")
     # letzter Lauf, der wirklich gearbeitet hat (Auftrag „update“ nicht übersprungen)
@@ -147,8 +151,8 @@ def main():
     jetzt = datetime.now(timezone.utc)
     if os.environ.get("SELBSTTEST_ANLASS") == "zeitplan" and OUT.exists():
         a = alter_h((json_von(OUT.read_text()) or {}).get("t"), jetzt)
-        if a is not None and a < 5 * 24:
-            print("Selbsttest: letzter Test ist jünger als 5 Tage – nichts zu tun")
+        if a is not None and a < 20:
+            print("Selbsttest: letzter Test ist jünger als 20 Stunden – nichts zu tun")
             return 0
     repo = os.environ.get("GITHUB_REPOSITORY", "")
     besitzer, _, name = repo.partition("/")
@@ -159,6 +163,9 @@ def main():
     ablauf_pruefen(t, repo, os.environ.get("GH_TOKEN", ""), jetzt)
     dienste_pruefen(t, dienste, herkunft, jetzt)
     ok = all(p["ok"] for p in t.punkte)
+    if os.environ.get("GITHUB_OUTPUT"):   # nur ein echter Test bewertet den Lauf (ein übersprungener meldet nichts doppelt)
+        with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+            f.write("geprueft=1\n")
     OUT.write_text(json.dumps({"t": jetzt.strftime("%Y-%m-%dT%H:%M:%SZ"), "ok": ok, "punkte": t.punkte}, ensure_ascii=False, separators=(",", ":")) + "\n")
     print(f"Selbsttest: {sum(p['ok'] for p in t.punkte)} von {len(t.punkte)} in Ordnung")
     for p in t.punkte:

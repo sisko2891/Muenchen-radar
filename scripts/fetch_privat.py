@@ -370,7 +370,8 @@ def fix_turbo(entries):
     """Turbo-Woche: 4 Dienste in 3 Tagen (04:30, 22:30, 19:30, 14:30). Das Portal führt jeden Dienst in einer
     eigenen Tageszeile, tatsächlich beginnen Dienst 2–4 aber einen Kalendertag früher.
     Erkennung über die Nachbarn: Ein Dienst gehört zur Folge, wenn er mit seinen Nachbartagen eine lückenlose Folge
-    von mindestens drei passenden Tagen bildet (gesperrte Tage zählen als passend). Reicht die Folge bis an den Rand
+    von mindestens drei passenden Tagen bildet (gesperrte Tage zählen als passend, aber nur, wenn mindestens zwei Tage
+    der Folge einen Dienst mit passender Uhrzeit haben). Reicht die Folge bis an den Rand
     der Daten (sie kann davor bzw. danach weitergehen, das Portal liefert erst ab heute), genügen zwei. Ein einzelnes
     passendes Paar in einer normalen Woche (z. B. 19:30 und am Folgetag 14:30) bleibt so täglich."""
     by_day = {}
@@ -394,24 +395,29 @@ def fix_turbo(entries):
         return k_of(t) == j or gesperrt(t)
 
     def kette(d, k):
-        """Länge der lückenlosen Folge um d; offen = sie reicht an den Datenrand und kann dort weitergehen"""
-        n, i, offen = 1, 1, False
+        """Länge der lückenlosen Folge um d, davon Dienste mit passender Uhrzeit (echt);
+        offen = sie reicht an den Datenrand und kann dort weitergehen"""
+        n, echt, i, offen = 1, 1, 1, False
         while k - i >= 0 and passt(shift(d, -i), k - i):
+            echt += k_of(shift(d, -i)) == k - i
             n, i = n + 1, i + 1
         offen |= k - i >= 0 and shift(d, 1 - i) == first
         i = 1
         while k + i <= 3 and passt(shift(d, i), k + i):
+            echt += k_of(shift(d, i)) == k + i
             n, i = n + 1, i + 1
         offen |= k + i <= 3 and shift(d, i - 1) == last
-        return n, offen
+        return n, echt, offen
 
     rolle = {}  # Tag -> Position in der Folge (1–3 werden vorgezogen)
     for d in days:
         k = k_of(d)
         if k is None:
             continue
-        n, offen = kette(d, k)
-        if n >= 3 or (n == 2 and offen):
+        n, echt, offen = kette(d, k)
+        # gesperrte Tage zählen nur mit mindestens zwei echten Diensten (sonst würde ein einzelner Dienst neben gesperrten
+        # Tagen vorgezogen); Ausnahme: die Folge begann vor dem ersten Datentag
+        if (n >= 3 or (n == 2 and offen)) and (echt >= 2 or (d == first and k in (1, 2))):
             rolle[d] = k
     # gesperrter Tag direkt nach Dienst 3 ist Dienst 4
     for d, k in list(rolle.items()):
