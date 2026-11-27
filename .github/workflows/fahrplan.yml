@@ -1,0 +1,39 @@
+name: Soll-Fahrplan der S4 holen
+
+# Holt einmal pro Woche die offenen Fahrplandaten des MVV (GTFS, CC BY 4.0) und legt daraus die Soll-Abfahrten der S4
+# ab Aubing Richtung Innenstadt in data/s4-soll.json ab (öffentliche Fahrplandaten). Der S4-Zähler (Dienst daten/)
+# gleicht damit ab, ob eine geplante Fahrt nie angezeigt wurde. Veröffentlicht wird die Datei mit dem nächsten
+# Datenabgleich.
+
+on:
+  schedule:
+    - cron: "41 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fahrplan
+  cancel-in-progress: false
+
+jobs:
+  holen:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Fahrplan auswerten
+        run: python3 scripts/fetch_soll.py
+      - name: Ergebnis speichern
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add data/s4-soll.json
+          AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0); echo "::add-mask::$AUTH"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $AUTH"
+          werkzeug/git-speichern.sh "Soll-Fahrplan der S4" || { echo "::error::Fahrplan konnte nicht gespeichert werden"; exit 1; }

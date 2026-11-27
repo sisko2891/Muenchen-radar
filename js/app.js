@@ -429,8 +429,24 @@ function s4Verlauf(roh){
     <p class="s4-wv-t" aria-live="polite">${esc(text(w))}</p></div>`;
 }
 // Aufteilung (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen) aus z.v: nur Fahrten, bei denen „mit Grund“ schon
-// gezählt wurde (Tage einer älteren Fassung fehlen darin) – „nicht bis Marienplatz“ und die Gründe zählen über den ganzen Zeitraum
+// gezählt wurde (Tage einer älteren Fassung fehlen darin) – „nicht bis Marienplatz“ und die Ursachen zählen über den ganzen Zeitraum.
+// „Nicht planmäßig“ = ab 5 min verspätet + ausgefallen. Ausgefallen: gestrichen, zu spät (erst abgefahren, als laut Fahrplan
+// schon die nächste fahren sollte), verschwunden (vor der Abfahrt aus der Anzeige) oder fehlte (im Soll-Fahrplan des MVV, von
+// der MVG nie angezeigt). Wegen angekündigter Bauarbeiten entfallene Fahrten zählen nicht.
 const S4_ZEITEN=[["7","7 Tage"],["30","30 Tage"],["alle","Gesamt"]];
+const S4_ARTEN={g:"gestrichen",s:"zu spät",v:"verschwunden",f:"fehlte"};
+let s4AlleAus=false;   // Ausfälle im Einzelnen: alle statt der neuesten vier
+const fz0=x=>(+x||0).toLocaleString("de-DE");
+function s4Ausfall(a){
+  const p=a.p, art=a.art, wo={timeZone:"Europe/Berlin"};
+  const wt=new Date(p).toLocaleDateString("de-DE",{weekday:"short",...wo}).replace(".",""), tg=new Date(p).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",...wo});
+  const g=a.g?` · „${esc(a.g)}“`:"";
+  const was=art==="f"?"stand im Fahrplan, die MVG hat sie nie angezeigt"
+    :art==="g"?"von der MVG gestrichen"+g
+    :art==="v"?"erst angezeigt, dann vor der Abfahrt aus der Anzeige verschwunden"+g
+    :`fuhr ${fmtT(a.t)} (+${fz0(a.v)} min)${a.n!==null?` – laut Fahrplan war die nächste um ${fmtT(a.n)}`:""}${g}`;
+  return `<div class="s4-a"><span class="t">${esc(wt)} ${fmtT(p)}<small>${esc(tg)}</small></span><span class="w"><b>→ ${esc(a.z||"S4")}</b><small>${was}</small></span><span class="s4-tag ${art}">${S4_ARTEN[art]}</span></div>`;
+}
 function s4Zeigen(meldung){
   const box=$("#s4-inhalt");
   if(!s4Daten){box.innerHTML=`<div class="empty">${esc(meldung||"Lade Statistik …")}</div>`;$("#s4-stand").textContent="";return;}
@@ -439,50 +455,71 @@ function s4Zeigen(meldung){
   const top=(Array.isArray(z.top)?z.top:[]).filter(t=>Array.isArray(t)&&typeof t[0]==="string").slice(0,10).map(t=>[t[0],ganz(t[1])]), max=Math.max(1,...top.map(t=>t[1]));
   // (unplausible Zahlen werden gekappt, damit die Anteile zusammen nie über 100 % gehen)
   const v=z.v&&typeof z.v==="object"?z.v:{}, vn=zahl(v,"n"), aus=Math.min(vn,zahl(v,"aus")), oe=Math.min(vn-aus,zahl(v,"oe")), mg=Math.min(vn-aus-oe,zahl(v,"mg")), og=Math.min(vn-aus-oe-mg,zahl(v,"og"));
-  const ausSp=Math.min(aus,zahl(v,"ausSp"));   // davon „zu spät“: erst abgefahren, als laut Fahrplan schon die nächste fahren sollte
-  // Hochrechnung (z.h, vom Zähler): Fahrten ohne Echtzeit bekommen die Verteilung der Fahrten mit Echtzeit ihrer Woche.
-  // Kommazahlen, gekappt wie oben – zusammen nie mehr als die geschätzten Fahrten
+  // Ausgefallen nach Art: zu spät (ausSp), verschwunden (ausVw), fehlte (ausFe), der Rest gestrichen
+  const ausSp=Math.min(aus,zahl(v,"ausSp")), ausVw=Math.min(aus-ausSp,zahl(v,"ausVw")), ausFe=Math.min(aus-ausSp-ausVw,zahl(v,"ausFe")), ausG=aus-ausSp-ausVw-ausFe;
+  const bau=zahl(v,"bau"), zus=Math.min(vn,zahl(v,"zus"));
+  // Hochrechnung (z.h, vom Zähler): Fahrten ohne Echtzeit bekommen die Verteilung der gefahrenen Fahrten mit Echtzeit ihrer
+  // Woche. Kommazahlen, gekappt wie oben – zusammen nie mehr als die geschätzten Fahrten
   const h=z.h&&typeof z.h==="object"?z.h:{}, kz=x=>{x=+x;return Number.isFinite(x)&&x>0?x:0;};
   const he=Math.min(oe,ganz(h.n)), hAus=Math.min(he,kz(h.aus)), hMg=Math.min(he-hAus,kz(h.mg)), hOg=Math.min(he-hAus-hMg,kz(h.og));
-  const hAusSp=Math.min(hAus,kz(h.ausSp)), AUS=aus+hAus, AUSSP=ausSp+hAusSp, MG=mg+hMg, OG=og+hOg, SP=MG+OG, OE=oe-he, OK=Math.max(0,vn-AUS-SP-OE);
+  const AUS=aus+hAus, MG=mg+hMg, OG=og+hOg, SP=MG+OG, OE=oe-he, OK=Math.max(0,vn-AUS-SP-OE), NP=SP+AUS;
   const minMg=zahl(v,"mgMin")+(hMg?kz(h.mgMin):0), minOg=zahl(v,"ogMin")+(hOg?kz(h.ogMin):0);
   // ganze Zahlen für die Anzeige, die zusammen genau die gezählten Fahrten ergeben (größte Reste zuerst)
   const [rOk,rMg,rOg,rAus,rOe]=(()=>{const w=[OK,MG,OG,AUS,OE].map(x=>Math.max(0,x)),g=w.map(Math.floor);let rest=vn-g.reduce((a,b)=>a+b,0);
     w.map((x,i)=>[x-g[i],i]).sort((a,b)=>b[0]-a[0]).forEach(([,i])=>{if(rest>0){g[i]++;rest--;}});return g;})();
-  const rSp=rMg+rOg, ca=he?"≈ ":"", rAusSp=Math.min(rAus,Math.round(AUSSP));
+  const rSp=rMg+rOg, rNp=rSp+rAus, ca=he?"≈ ":"";
+  const rAusSp=Math.max(0,rAus-ausG-ausVw-ausFe);   // „zu spät“ bekommt den Rest: darin steckt die Schätzung (gestrichen, verschwunden und fehlte sind immer bekannt)
   const tagD=t=>/^\d{4}-\d{2}-\d{2}$/.test(t||"")?t.split("-").reverse().join("."):"";
   const seit=tagD(s4Daten.seit), alt=!s4Daten.stand||Date.now()-s4Daten.stand>30*60000;
   const fz=x=>x.toLocaleString("de-DE"), proz=(a,b)=>a&&a/b<.0005?"<0,1":(a/b*100).toLocaleString("de-DE",{minimumFractionDigits:1,maximumFractionDigits:1});
   const gross=(a,b)=>b?`${proz(a,b)}<small>%</small>`:"–", klein=(a,b)=>b?proz(a,b)+" %":"–", breite=(a,b)=>b?(a/b*100).toFixed(2)+"%":"0";
-  const schnitt=(m,k)=>k?`Ø +${Math.round(m/k)} min`:"";
+  const schnitt=(m,k)=>k?`Ø +${Math.round(m/k)} min`:"";
+  // Soll-Fahrplan (vom Zähler): Stand aus der Version (JJJJMMTT), sonst die Version selbst
+  const so=s4Daten.soll&&typeof s4Daten.soll==="object"&&typeof s4Daten.soll.version==="string"?s4Daten.soll:null;
+  const sv=so?so.version.slice(0,20):"", sollStand=/^20\d\d(0[1-9]|1[0-2])(0[1-9]|[12]\d|3[01])$/.test(sv)?`Stand ${sv.slice(6)}.${sv.slice(4,6)}.${sv.slice(0,4)}`:sv?"Version "+sv:"";
+  const basis=so?"Fahrten laut Fahrplan":"Fahrten gezählt";
+  const ausArt=[[ausG,"gestrichen"],[rAusSp,"zu spät",hAus],[ausVw,"verschwunden"],[ausFe,"fehlten im Fahrplan der MVG"]].filter(x=>x[0]).map(([k,t,s])=>`${s?"≈ ":""}${fz(k)} ${t}`).join(" · ");
   // [Art, Bezeichnung, Zusatz, angezeigte Zahl, Anteil (mit Kommastellen)]
-  const zeilen=[["ok","pünktlich","unter 5 min",rOk,OK],["mg","ab 5 min, mit Grund",schnitt(minMg,MG),rMg,MG],["og","ab 5 min, ohne Grund",schnitt(minOg,OG),rOg,OG],["aus","ausgefallen",rAusSp?`davon ${hAusSp?ca:""}${fz(rAusSp)} zu spät`:"",rAus,AUS]];
+  const zeilen=[["ok","pünktlich","unter 5 min",rOk,OK],["mg","ab 5 min, mit Grund",schnitt(minMg,MG),rMg,MG],["og","ab 5 min, ohne Grund",schnitt(minOg,OG),rOg,OG],["aus","ausgefallen",ausArt,rAus,AUS]];
   if(OE>=0.5)zeilen.push(["oe","ohne Echtzeit","Verspätung unbekannt",rOe,OE]);
+  const hinweise=[zus?`${zus===1?"1 Fahrt zeigte":fz(zus)+" Fahrten zeigte"} die MVG zusätzlich (nicht im Fahrplan) – ${zus===1?"sie zählt":"sie zählen"} mit.`:"",
+    he?`${he===1?"1 Fahrt":fz(he)+" Fahrten"} ohne Echtzeit („laut Fahrplan“) ${he===1?"ist":"sind"} nach dem Schnitt ihrer Woche verteilt (geschätzt).`:"",
+    bau?`${bau===1?"1 Fahrt entfiel":fz(bau)+" Fahrten entfielen"} wegen angekündigter Bauarbeiten – ${bau===1?"sie zählt":"sie zählen"} nicht.`:""].filter(Boolean).join(" ");
+  // einzelne Ausfälle (vom Zähler: höchstens die 40 neuesten der letzten 30 Tage); fehlt die Liste (ältere Fassung), kein Abschnitt
+  const ausL=Array.isArray(z.ausfaelle)?z.ausfaelle.filter(a=>a&&typeof a==="object"&&Number.isFinite(a.p)&&a.art in S4_ARTEN).slice(0,40).map(a=>({p:a.p,art:a.art,
+    t:Number.isFinite(a.t)?a.t:a.p,v:ganz(a.v),n:Number.isFinite(a.n)?a.n:null,z:typeof a.z==="string"?a.z.slice(0,40):"",g:typeof a.g==="string"?a.g.slice(0,80):""})):null;
   $("#s4-stand").textContent=seit?`gezählt seit ${seit}`:"";
   box.innerHTML=`<div class="s4-leiste"><div class="s4-tabs" role="group" aria-label="Zeitraum">${S4_ZEITEN.map(([k,t])=>`<button type="button" data-z="${k}" aria-pressed="${k===s4Zeit}">${t}</button>`).join("")}</div>
-      <span class="s4-anz"><b>${fz(n)}</b> Fahrten gezählt</span></div>
+      <span class="s4-anz"><b>${fz(n)}</b> ${basis}</span></div>
     <div class="s4-cols"><div>
       <div class="s4-k">
-        <div class="s4-kz s4-c-sp"><h4>Ab 5 min verspätet</h4><b>${gross(SP,vn)}</b><p>${vn?`${ca}${fz(rSp)} von ${fz(vn)} Fahrten${SP?" · "+schnitt(minOg+minMg,SP):""}`:n?"wird ab jetzt gezählt":"noch keine Fahrten"}</p>
-          ${vn?`<div class="s4-split" aria-hidden="true"><i class="s4-c-mg" style="width:${breite(MG,SP)}"></i><i class="s4-c-og" style="width:${breite(OG,SP)}"></i></div>
-          <div class="s4-split-t"><span class="s4-c-mg">${ca}${fz(rMg)} mit Grund</span><span class="s4-c-og">${ca}${fz(rOg)} ohne Grund</span></div>`:""}</div>
-        <div class="s4-kz s4-c-kurz"><h4>Nicht bis Marienplatz</h4><b>${gross(kurz,n)}</b><p>${fz(kurz)} von ${fz(n)} Fahrten endeten vorher oder fuhren mit Ersatzverkehr</p></div>
+        <div class="s4-kz s4-c-sp"><h4>Nicht planmäßig</h4><b>${gross(NP,vn)}</b><p>${vn?`${ca}${fz(rNp)} von ${fz(vn)} ${basis}`:n?"wird ab jetzt gezählt":"noch keine Fahrten"}</p>
+          ${vn?`<div class="s4-split" aria-hidden="true"><i class="s4-c-sp" style="width:${breite(SP,NP)}"></i><i class="s4-c-aus" style="width:${breite(AUS,NP)}"></i></div>
+          <div class="s4-split-t"><span class="s4-c-sp">${ca}${fz(rSp)} ab 5 min verspätet</span><span class="s4-c-aus">${hAus?ca:""}${fz(rAus)} ausgefallen</span></div>`:""}</div>
+        <div class="s4-kz s4-c-kurz"><h4>Nicht bis Marienplatz</h4><b>${gross(kurz,n)}</b><p>${fz(kurz)} von ${fz(n)} Fahrten endeten vorher (etwa in Pasing) oder fuhren mit Ersatzverkehr</p></div>
       </div>
-      <h3>So fuhren die Züge ${vn?`<small>${fz(vn)} Fahrten</small>`:""}</h3>
+      <h3>So fuhren die Züge ${vn?`<small>${fz(vn)} ${basis}</small>`:""}</h3>
       ${vn?`<div class="s4-vt-bar" aria-hidden="true">${zeilen.filter(r=>r[4]>=0.005).map(r=>`<i class="s4-c-${r[0]}" style="width:${breite(r[4],vn)}"></i>`).join("")}</div>
-      <div class="s4-vt">${zeilen.map(([k,l,x,a,w])=>`<i class="d s4-c-${k}"></i><span class="l">${l}${x?`<small>${x}</small>`:""}</span><span class="z">${fz(a)}</span><span class="p">${klein(w<0.005?0:w,vn)}</span>`).join("")}</div>
-      <div class="s4-vt s4-vt-sum"><i></i><span class="l">ab 5 min verspätet gesamt</span><span class="z">${fz(rSp)}</span><span class="p">${klein(SP,vn)}</span></div>
-      ${he?`<p class="s4-hr">${he===1?"1 Fahrt":fz(he)+" Fahrten"} ohne Echtzeit („laut Fahrplan“) ${he===1?"ist":"sind"} nach dem Schnitt ihrer Woche verteilt (geschätzt).</p>`:""}`
+      <div class="s4-vt">${zeilen.map(([k,l,x,a,w])=>`<i class="d s4-c-${k}"></i><span class="l${k==="aus"?" s4-aus-l":""}">${l}${x?`<small>${x}</small>`:""}</span><span class="z">${fz(a)}</span><span class="p">${klein(w<0.005?0:w,vn)}</span>`).join("")}</div>
+      <div class="s4-vt s4-vt-sum"><i></i><span class="l">ab 5 min verspätet</span><span class="z">${fz(rSp)}</span><span class="p">${klein(SP,vn)}</span></div>
+      <div class="s4-vt s4-vt-sum s4-vt-np s4-c-sp"><i></i><span class="l">nicht planmäßig gesamt<small>verspätet + ausgefallen</small></span><span class="z">${fz(rNp)}</span><span class="p">${klein(NP,vn)}</span></div>`
       :`<div class="empty">${n?"Die Aufteilung (pünktlich, verspätet mit/ohne Grund, ausgefallen) beginnt mit den nächsten Fahrten.":"Noch keine Fahrten gezählt."}</div>`}
+      ${hinweise?`<p class="s4-hr">${hinweise}</p>`:""}
     </div><div>
-      <h3>Häufigste Verspätungsgründe <small>ab 1 min</small></h3>
+      ${ausL?`<h3>Ausfälle im Einzelnen <small>neueste zuerst${s4Zeit==="alle"?" · letzte 30 Tage":""}</small></h3>
+      <div class="s4-al">${ausL.length?(s4AlleAus?ausL:ausL.slice(0,4)).map(s4Ausfall).join(""):`<div class="empty">${n?"Keine Ausfälle in diesem Zeitraum.":"Noch keine Fahrten gezählt."}</div>`}</div>
+      ${ausL.length>4?`<button type="button" class="s4-mehr" data-aus aria-expanded="${s4AlleAus}">${s4AlleAus?"Weniger zeigen":`Alle ${fz(ausL.length)} zeigen`}</button>`:""}
+      ${aus>ausL.length&&(s4AlleAus||ausL.length<=4)?`<p class="s4-hr">Einzeln gezeigt sind die neuesten ${fz(ausL.length)} (aus den letzten 30 Tagen, höchstens 40).</p>`:""}`:""}
+      <h3${ausL?' class="s4-ab"':""}>Häufigste Ursachen <small>Verspätungen ab 1 min und Ausfälle</small></h3>
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
       ${s4Zeit==="alle"?s4Verlauf(s4Daten.wochen):""}
+      <div class="s4-abgl">${so?`<b>Abgleich mit dem Fahrplan:</b> Grundlage ist der Soll-Fahrplan des MVV (offene Fahrplandaten, CC BY 4.0${sollStand?", "+esc(sollStand):""}). Jede Fahrt daraus wird mit der Anzeige der MVG verglichen.`:`<b>So wird gezählt:</b>`}
+        Als <b>ausgefallen</b> zählt eine S4, wenn die MVG sie streicht, wenn sie erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte (eine gestrichene zählt dabei nicht als „die nächste“), wenn sie vor der Abfahrt aus der Anzeige verschwindet${so?" oder wenn die MVG sie nie angezeigt hat. Lief der Zähler gerade nicht oder lieferte die MVG keine Daten, zählt eine fehlende Fahrt nicht":""}. Fahrten, die wegen angekündigter Bauarbeiten entfallen, zählen nicht.</div>
     </div></div>
-    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Als ausgefallen zählt auch eine S4, die erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte („zu spät“; eine gestrichene S4 zählt dabei nicht als „die nächste“). Ausgefallene Fahrten zählen nicht als „nicht bis Marienplatz“. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
+    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Endet eine S4 vorher (etwa in Pasing) oder fährt Ersatzverkehr, zählt sie als „nicht bis Marienplatz“; ausgefallene Fahrten zählen dort nicht. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
 async function s4Auf(){
-  s4WvWahl=-1;$("#s4stat").hidden=false;s4Zeigen();
+  s4WvWahl=-1;s4AlleAus=false;$("#s4stat").hidden=false;s4Zeigen();
   clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);   // schließt nach 2 min von selbst
   try{const url=await datenAdresse();if(!url)throw new Error("Zähler nicht erreichbar");
     const r=await fetchT(`${url}/s4`,{cache:"no-store"});if(!r.ok)throw new Error("Fehler "+r.status);
@@ -495,8 +532,9 @@ $("#deps").addEventListener("click",e=>{if(!e.target.closest("a,button"))s4Auf()
 $("#s4stat").addEventListener("click",e=>{
   const wv=e.target.closest("button[data-wv]");
   if(wv){s4WvWahl=+wv.dataset.wv;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-wv="${s4WvWahl}"]`)?.focus();clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
+  if(e.target.closest("button[data-aus]")){s4AlleAus=!s4AlleAus;s4Zeigen();$("#s4-inhalt").querySelector("button[data-aus]")?.focus();clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}
   const b=e.target.closest("button[data-z]");
-  if(b){s4Zeit=b.dataset.z;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-z="${s4Zeit}"]`)?.focus();   // Fokus bleibt auf der Auswahl
+  if(b){s4Zeit=b.dataset.z;s4AlleAus=false;s4Zeigen();$("#s4-inhalt").querySelector(`button[data-z="${s4Zeit}"]`)?.focus();   // Fokus bleibt auf der Auswahl
     clearTimeout(s4Timer);s4Timer=setTimeout(s4Zu,2*60000);return;}   // wer umschaltet, liest noch: Uhr neu starten
   if(e.target===e.currentTarget||e.target.closest("#s4-zu"))s4Zu();
 });

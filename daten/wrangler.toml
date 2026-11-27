@@ -27,3 +27,5 @@ invocation_logs = false
 
 [vars]
 ANSTOSS_REPO = "sisko2891/Muenchen-radar"
+# öffentliche Seite: von dort holt der S4-Zähler den Soll-Fahrplan (data/s4-soll.json)
+SEITE_URL = "https://sisko2891.github.io/Muenchen-radar/"

@@ -18,7 +18,7 @@ on:
     branches: [main]
     # Änderungen nur an den Cloudflare-Diensten, ihren Abläufen, dem Selbsttest oder der Beschreibung brauchen keinen
     # Datenabgleich (enthält ein Push auch anderes, läuft er wie bisher)
-    paths-ignore: ["daten/**", "licht/**", "worker/**", "weg/**", "README.md", ".github/workflows/*-deploy.yml", ".github/workflows/selbsttest.yml", "scripts/selbsttest.py"]
+    paths-ignore: ["daten/**", "licht/**", "worker/**", "weg/**", "README.md", ".github/workflows/*-deploy.yml", ".github/workflows/selbsttest.yml", "scripts/selbsttest.py", ".github/workflows/fahrplan.yml", "scripts/fetch_soll.py"]
 
 permissions:
   contents: read

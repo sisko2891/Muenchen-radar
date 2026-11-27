@@ -58,6 +58,10 @@ const S4_FAHRTEN_TAGE = 90;                         // so lange bleibt jede gez�
 // Neustart der Zählung (einmalig beim nächsten Lauf, wenn der gespeicherte Zähler eine andere Marke trägt): Tage und
 // einzelne Fahrten werden gelöscht; offene und eben gezählte Fahrten bleiben (nichts doppelt, nichts verloren)
 const S4_NEUSTART = "2026-11-26";
+// befristete, angekündigte S4-Baustellen (Meldungen „Fahrplanänderung“ der MVG, höchstens 30 Tage lang) entschuldigen fehlende
+// Fahrten; Dauerbaustellen stehen ohnehin im Soll-Fahrplan. Gestrichene Fahrten zählen nur mit Bau-Grund als Baustelle.
+const S4_MELD_URL = "https://www.mvg.de/api/bgw-pt/v3/messages?messageTypes=SCHEDULE_CHANGE", S4_BAU_MAX = 30 * 864e5;
+const S4_BAU_TEXT = /Bauarbeit|Baumaßnahme|Baustelle|Gleisbau/i;
 const s4Tag = ms => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
 let s4Merk = null;                                  // Antwort für die Seite kurz merken (eine Minute je Rechner-Instanz)
 
@@ -99,8 +103,11 @@ export default {
       if (!r.ok) throw new Error(`S4-Abruf gescheitert (${r.status})`);
       const liste = await r.json();
       if (!Array.isArray(liste)) throw new Error("S4-Abruf: unerwartete Antwort");
-      const z = await env.DATEN.get(env.DATEN.idFromName("daten")).fetch(new Request("https://intern/s4/zaehlen", { method: "POST", body: JSON.stringify(liste) }));
+      const stub = env.DATEN.get(env.DATEN.idFromName("daten"));
+      const z = await stub.fetch(new Request("https://intern/s4/zaehlen", { method: "POST", body: JSON.stringify(liste) }));
       if (!z.ok) throw new Error(`S4-Zähler gescheitert (${z.status})`);
+      // stündlich: Soll-Fahrplan und Baustellen holen (im Speicher-Dienst – dort ist Rechenzeit für die große Meldungsliste)
+      if ((await z.json().catch(() => ({}))).hilfe) await stub.fetch(new Request("https://intern/s4/hilfe", { method: "POST" }));
       return;
     }
     if (!env.ANSTOSS_TOKEN || !/^[\w.-]+\/[\w.-]+$/.test(env.ANSTOSS_REPO || "")) { console.log("Anstoß nicht eingerichtet"); return; }
@@ -243,6 +250,7 @@ export class DatenState {
     // S4-Zähler: nur von innen erreichbar (der äußere Dienst reicht /s4/… von außen nie durch)
     if (url.pathname === "/s4/zaehlen" && req.method === "POST") return json(req, 200, await this.s4Zaehlen(await req.json().catch(() => null), Date.now()));
     if (url.pathname === "/s4/lesen") return json(req, 200, await this.s4Lesen(Date.now()));
+    if (url.pathname === "/s4/hilfe" && req.method === "POST") return json(req, 200, await this.s4Hilfe(await req.json().catch(() => null), Date.now()));   // ohne Körper: selbst holen
     const [art, name] = teile;
     const ip = anschluss(req.headers.get("CF-Connecting-IP") || "?");
     if (teile.length === 2 && art === "pause" && name === "privat") {
@@ -274,6 +282,17 @@ export class DatenState {
       for (const tag of Array.isArray(s.fTage) ? s.fTage : []) weg.push("s4f:" + tag);
       s = { seit: s4Tag(now), offen: s.offen || {}, tage: {}, fertig: s.fertig, fertigAus: s.fertigAus || {}, fTage: [], neu: S4_NEUSTART };
     }
+    // Lücken des Zählers: über 12 min kein Lauf, oder nur Läufe ohne eine einzige S4 Richtung Innenstadt (Datenausfall der
+    // MVG, nachts). Was in solche Zeiten fällt, ist unbekannt und zählt nicht als „fehlte“. Eine noch offene Lücke gilt mit.
+    s.luecken = (Array.isArray(s.luecken) ? s.luecken : []).filter(l => Array.isArray(l) && l[1] > now - 14 * 864e5);
+    const s4Da = liste.some(d => d && d.label === "S4" && !S4_WEST.test(d.destination || "") && Number.isFinite(d.plannedDepartureTime));
+    const letzt = Number.isFinite(s.okS4) ? s.okS4 : s.ok, lang = !Number.isFinite(letzt) || now - letzt > 12 * 60e3;
+    if (s4Da) { if (lang && Number.isFinite(letzt)) s.luecken = [...s.luecken, [letzt, now]].slice(-60); s.okS4 = now; }
+    const luecken = !s4Da && lang ? [...s.luecken, [Number.isFinite(letzt) ? letzt : -Infinity, now]] : s.luecken;
+    const hilfe = (await this.s.get("s4hilfe")) || {};
+    const bauAktiv = p => (Array.isArray(hilfe.bau) ? hilfe.bau : []).some(b => b && b[0] <= p && p <= b[1]);
+    const sollTag = tag => (hilfe.soll && Array.isArray(hilfe.soll.tage?.[tag]) ? hilfe.soll.tage[tag] : null);
+    const imSoll = p => { const l = sollTag(s4Tag(p)); return l ? l.some(x => Math.abs(x[0] * 60e3 - p) <= 3 * 60e3) : null; };   // null: Soll unbekannt
     const gelistet = new Set();
     for (const d of liste) {
       if (!d || d.label !== "S4" || S4_WEST.test(d.destination || "") || !Number.isFinite(d.plannedDepartureTime)) continue;
@@ -292,39 +311,83 @@ export class DatenState {
       if (!rt && alt?.rt) { f.t = alt.t; f.v = alt.v; f.rt = true; f.aus = f.aus || !!alt.aus; f.kurz = f.kurz || !!alt.kurz; if (!f.g.length && Array.isArray(alt.g)) f.g = alt.g; if (typeof alt.ziel === "string") f.ziel = alt.ziel; }
       s.offen[p] = f;
     }
+    // Verschwunden: Die MVG zeigt eine Fahrt nicht mehr, obwohl sie noch bevorsteht und spätere Fahrten angezeigt werden
+    // (die Liste reicht also über sie hinaus). Erst nach zwei solchen Läufen gilt sie als verschwunden (Aussetzer abfangen).
+    const spaeteste = Math.max(-Infinity, ...[...gelistet].map(Number));
+    for (const [p, f] of Object.entries(s.offen)) {
+      if (gelistet.has(p) || f.aus) continue;
+      if (+p > now + 2 * 60e3 && f.t > now + 2 * 60e3 && spaeteste > +p) f.fehlt = (f.fehlt || 0) + 1;
+    }
     // Abfahrten laut Fahrplan aller bekannten, nicht gestrichenen Fahrten (noch offen oder in den letzten 6 h gezählt) – für
     // „zu spät“. Gestrichene zählen nicht als „die nächste“: Fährt die verspätete im Takt der gestrichenen (Zugtausch), ist
     // das ein Ausfall (die gestrichene), nicht zwei.
     s.fertigAus = s.fertigAus || {};
-    const plan = [...new Set([...Object.keys(s.offen).filter(p => !s.offen[p].aus), ...Object.keys(s.fertig).filter(p => !s.fertigAus[p])])]
+    const plan = [...new Set([...Object.keys(s.offen).filter(p => !s.offen[p].aus && !(s.offen[p].fehlt >= 2)), ...Object.keys(s.fertig).filter(p => !s.fertigAus[p])])]
       .map(Number).filter(Number.isFinite).sort((x, y) => x - y);
     const naechste = p => plan.find(x => x > p) ?? null;
     const fahrten = {};   // je Tag die eben gezählten Fahrten
+    const tagVon = p => { const tag = s4Tag(p), z = s.tage[tag] || (s.tage[tag] = { n: 0, kurz: 0, g: {} });
+      // v: Aufteilung der Fahrten mit eigener Fahrtenzahl (Tage ohne v stammen aus einer älteren Fassung). Ausgefallen (aus):
+      // davon zu spät (ausSp), verschwunden (ausVw), fehlte im Fahrplan der MVG (ausFe), der Rest gestrichen. bau: wegen
+      // angekündigter Bauarbeiten entfallen (zählt nirgends mit), zus: von der MVG gezeigt, aber nicht im Soll-Fahrplan
+      const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, ausVw: 0, ausFe: 0, bau: 0, zus: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
+      return { tag, z, v }; };
+    const merken = (tag, r) => (fahrten[tag] || (fahrten[tag] = [])).push(r);
+    const gruendeZaehlen = (z, gr) => { for (const g of gr) { if (g in z.g || Object.keys(z.g).length < 40) z.g[g] = (z.g[g] || 0) + 1; } };
     // abgefahren (zwei Minuten Nachlauf): zählen und vergessen
     for (const [p, f] of Object.entries(s.offen)) {
-      if (f.t > now - 120e3) continue;
+      const vw = (f.fehlt || 0) >= 2 && !f.aus;   // verschwunden: gilt ab ihrer Abfahrtszeit laut Plan
+      if (!vw && f.t > now - 120e3) continue;
+      if (vw && +p > now - 120e3) continue;
       // ohne Echtzeit, aber noch angezeigt: warten (höchstens 90 min nach Fahrplan) – vielleicht kommt die Echtzeit noch
       if (f.rt === false && gelistet.has(p) && now - +p < 90 * 60e3) continue;
-      delete s.offen[p]; s.fertig[p] = now; if (f.aus) s.fertigAus[p] = now;
-      const n = naechste(+p), spaet = !f.aus && f.rt !== false && n !== null && f.t >= n;
-      // v: Aufteilung der Fahrten (pünktlich / ab 5 min mit Grund / ohne Grund / ausgefallen / ohne Echtzeit) mit eigener
-      // Fahrtenzahl (Tage ohne v stammen aus einer älteren Fassung). ausSp: davon ausgefallen, weil „zu spät“
-      const tag = s4Tag(+p), z = s.tage[tag] || (s.tage[tag] = { n: 0, kurz: 0, g: {} });
-      const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
-      (fahrten[tag] || (fahrten[tag] = [])).push({ p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0,
-        n, s: Number.isFinite(f.s) ? f.s : null, r1: Number.isFinite(f.r1) ? f.r1 : null, z: typeof f.ziel === "string" ? f.ziel : "", g: Array.isArray(f.g) ? f.g : [] });
+      delete s.offen[p]; s.fertig[p] = now; if (f.aus || vw) s.fertigAus[p] = now;
+      const n = naechste(+p), spaet = !f.aus && !vw && f.rt !== false && n !== null && f.t >= n;
+      const gr = Array.isArray(f.g) ? f.g : [];
+      // angekündigte Bauarbeiten: gestrichen mit Bau-Grund, oder verschwunden während einer befristeten S4-Baustelle
+      const bau = (f.aus && gr.some(x => S4_BAU_TEXT.test(x))) || (vw && bauAktiv(+p));
+      const art = bau ? "b" : f.aus ? "g" : vw ? "v" : spaet ? "s" : "";
+      const { tag, z, v } = tagVon(+p);
+      merken(tag, { p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0, ...(art ? { art } : {}),
+        n, s: Number.isFinite(f.s) ? f.s : null, r1: Number.isFinite(f.r1) ? f.r1 : null, z: typeof f.ziel === "string" ? f.ziel : "", g: gr });
+      if (bau) { v.bau = (v.bau || 0) + 1; continue; }   // zählt nicht als Fahrt (offizielle Baustelle)
       z.n++; v.n++;
-      const gruendeZaehlen = () => { for (const g of f.g) { if (g in z.g || Object.keys(z.g).length < 40) z.g[g] = (z.g[g] || 0) + 1; } };
-      if (f.aus) { v.aus++; continue; }
-      if (spaet) { v.aus++; v.ausSp = (v.ausSp || 0) + 1; if (f.g.length) gruendeZaehlen(); continue; }
+      if (imSoll(+p) === false) v.zus = (v.zus || 0) + 1;
+      if (art) {   // ausgefallen; die Gründe zählen bei den Ursachen mit
+        v.aus++;
+        if (art === "s") v.ausSp = (v.ausSp || 0) + 1;
+        if (art === "v") v.ausVw = (v.ausVw || 0) + 1;
+        gruendeZaehlen(z, gr);
+        continue;
+      }
       if (f.kurz) z.kurz++;
       // ohne Echtzeit (z. B. Ausfall der Echtzeitdaten): Verspätung unbekannt – zählt weder als pünktlich noch als verspätet
       if (f.rt === false) { v.oe++; continue; }
-      if (f.v >= 1 && f.g.length) {
-        gruendeZaehlen();
+      if (f.v >= 1 && gr.length) {
+        gruendeZaehlen(z, gr);
         if (f.v >= S4_AB) { v.mg++; v.mgMin += f.v; }
       } else if (f.v >= S4_AB) { v.og++; v.ogMin += f.v; }
     }
+    // Abgleich mit dem Soll-Fahrplan: Fahrten, die laut Plan fahren sollten, die die MVG aber nie angezeigt hat („fehlte“).
+    // Geprüft wird 100 min nach der geplanten Abfahrt (bis dahin ist jede angezeigte Fahrt gezählt); in Zählerlücken und
+    // während befristeter, angekündigter S4-Baustellen zählt eine fehlende Fahrt nicht.
+    const sollGrenze = now - 100 * 60e3;
+    if (hilfe.soll && hilfe.soll.tage) {
+      const ab = Number.isFinite(s.sollBis) ? s.sollBis : sollGrenze;
+      const bekannt = [...Object.keys(s.offen), ...Object.keys(s.fertig)].map(Number);
+      for (const tag of [...new Set([s4Tag(ab), s4Tag(sollGrenze)])]) {
+        for (const x of sollTag(tag) || []) {
+          const p = x[0] * 60e3;
+          if (!(p > ab && p <= sollGrenze) || bekannt.some(b => Math.abs(b - p) <= 3 * 60e3)) continue;
+          if (luecken.some(l => l[0] < p + 5 * 60e3 && l[1] > p - 45 * 60e3)) continue;   // Zähler sah nichts: unbekannt
+          const ziel = String(hilfe.soll.ziele?.[x[1]] ?? "").slice(0, 40), b = bauAktiv(p), t = tagVon(p);
+          merken(t.tag, { p, t: p, v: 0, rt: 0, a: 0, k: 0, art: b ? "b" : "f", n: null, s: null, r1: null, z: ziel, g: [] });
+          if (b) { t.v.bau = (t.v.bau || 0) + 1; continue; }
+          t.z.n++; t.v.n++; t.v.aus++; t.v.ausFe = (t.v.ausFe || 0) + 1;
+        }
+      }
+    }
+    s.sollBis = Math.max(Number.isFinite(s.sollBis) ? s.sollBis : 0, sollGrenze);
     for (const [p, t] of Object.entries(s.fertig)) if (t < now - 6 * 3600e3) delete s.fertig[p];
     for (const p of Object.keys(s.fertigAus)) if (!s.fertig[p]) delete s.fertigAus[p];
     const tage = Object.keys(s.tage).sort();
@@ -352,15 +415,57 @@ export class DatenState {
     // Zähler, einzelne Fahrten und Löschen in einem Schritt (ohne await dazwischen fasst der Speicher-Dienst sie zusammen)
     const w1 = this.s.put(schreiben), w2 = weg.length ? this.s.delete(weg) : null;
     await w1; await w2;
+    // hilfe: Soll-Fahrplan und Baustellen sind älter als eine Stunde – der Zeitgeber soll sie neu holen
+    return { ok: true, hilfe: !(Number.isFinite(hilfe.t) && now - hilfe.t < 55 * 60e3) };
+  }
+  // Soll-Fahrplan (von der eigenen Seite, data/s4-soll.json; abgelegt nur heute −1 bis +2 Tage) und befristete S4-Baustellen
+  // (Meldungen „Fahrplanänderung“ der MVG) holen. Scheitert ein Teil, bleibt dessen letzter Stand; der Zählerlauf ist davon
+  // unberührt. body nur für Tests (dann wird nichts geholt).
+  async s4Hilfe(body, now) {
+    if (!body || typeof body !== "object") {
+      body = {};
+      const holen = async u => { const r = await fetch(u, { headers: { "User-Agent": "Mozilla/5.0 (katzingers-castle S4-Zaehler)", Accept: "application/json" }, signal: AbortSignal.timeout(20000) });
+        if (!r.ok) throw new Error(String(r.status)); return r.json(); };
+      const seite = this.env?.SEITE_URL || "";
+      if (/^https:\/\/[\w.-]+\/[\w./-]*$/.test(seite)) {
+        try { body.soll = await holen(seite + "data/s4-soll.json"); } catch (e) { console.log("Soll-Fahrplan nicht geholt (" + e.message + ")"); }
+      }
+      try {
+        const l = await holen(S4_MELD_URL), bau = [];
+        for (const m of Array.isArray(l) ? l : []) {
+          if (!m || m.type !== "SCHEDULE_CHANGE" || !(Array.isArray(m.lines) && m.lines.some(x => x?.label === "S4"))) continue;
+          const fenster = Array.isArray(m.incidentDurations) && m.incidentDurations.length ? m.incidentDurations : [{ from: m.validFrom, to: m.validTo }];
+          for (const f of fenster) if (Number.isFinite(f?.from) && Number.isFinite(f?.to) && f.to > f.from && f.to - f.from <= S4_BAU_MAX) bau.push([f.from, f.to, String(m.title || "")]);
+        }
+        body.bau = bau;
+      } catch (e) { console.log("Baustellen nicht geholt (" + e.message + ")"); }
+    }
+    const alt = (await this.s.get("s4hilfe")) || {}, neu = { t: now, soll: alt.soll || null, bau: Array.isArray(alt.bau) ? alt.bau : [] };
+    const so = body.soll;
+    if (so && typeof so === "object" && so.tage && typeof so.tage === "object") {
+      const heute = s4Tag(now), tage = {};
+      for (const k of [-1, 0, 1, 2]) {
+        const tag = new Date(Date.parse(heute + "T12:00:00Z") + k * 864e5).toISOString().slice(0, 10), l = so.tage[tag];
+        if (Array.isArray(l)) tage[tag] = l.filter(x => Array.isArray(x) && Number.isFinite(x[0]) && Number.isInteger(x[1])).slice(0, 200).map(x => [x[0], x[1]]);
+      }
+      neu.soll = { version: String(so.version || "").slice(0, 20), quelle: String(so.quelle || "").slice(0, 120), bis: Object.keys(so.tage).sort().pop() || "",
+        ziele: (Array.isArray(so.ziele) ? so.ziele : []).slice(0, 50).map(x => String(x).slice(0, 40)), tage };
+    }
+    if (Array.isArray(body.bau)) neu.bau = body.bau.filter(b => Array.isArray(b) && Number.isFinite(b[0]) && Number.isFinite(b[1]) && b[1] > now - 14 * 864e5)
+      .slice(0, 50).map(b => [b[0], b[1], String(b[2] || "").slice(0, 120)]);
+    await this.s.put("s4hilfe", neu);
     return { ok: true };
   }
-  // Summen für 7 Tage, 30 Tage und alles; je Zeitraum die zehn häufigsten Gründe.
+  // Summen für 7 Tage, 30 Tage und alles; je Zeitraum die zehn häufigsten Ursachen (Gründe von Verspätungen und Ausfällen).
   // v: Aufteilung der Fahrten – nur die Fahrten, die schon mit „mit Grund“ gezählt wurden; vAb: erster Tag damit im Zeitraum
-  // h: Hochrechnung der Fahrten ohne Echtzeit – jede bekommt die Verteilung der Fahrten mit Echtzeit ihrer Woche (Mo–So,
-  // die laufende Woche mit dem Stand bisher). h.n: so viele Fahrten sind geschätzt; Wochen ganz ohne Echtzeit bleiben offen.
+  // h: Hochrechnung der Fahrten ohne Echtzeit – sie sind gefahren, nur ihre Verspätung ist unbekannt: Jede bekommt die
+  // Verteilung der gefahrenen Fahrten mit Echtzeit ihrer Woche (Mo–So, die laufende mit dem Stand bisher) auf pünktlich,
+  // verspätet und „zu spät“. h.n: so viele Fahrten sind geschätzt; Wochen ganz ohne Echtzeit bleiben offen.
+  // ausfaelle: die ausgefallenen Fahrten im Zeitraum einzeln (höchstens die 40 neuesten, aus den letzten 30 Tagen)
   async s4Lesen(now) {
     const s = (await this.s.get("s4")) || { seit: null, tage: {} };
-    const VK = ["n", "aus", "ausSp", "og", "ogMin", "mg", "mgMin", "oe"], HK = ["aus", "ausSp", "og", "ogMin", "mg", "mgMin"];
+    const hilfe = (await this.s.get("s4hilfe")) || {};
+    const VK = ["n", "aus", "ausSp", "ausVw", "ausFe", "bau", "zus", "og", "ogMin", "mg", "mgMin", "oe"], HK = ["ausSp", "og", "ogMin", "mg", "mgMin"];
     const zahl = x => { x = +x; return Number.isFinite(x) && x > 0 ? x : 0; };
     const vVon = t => (t.v && typeof t.v === "object" ? t.v : null);
     const woche = tag => { const d = new Date(tag + "T12:00:00Z"); return Number.isFinite(d.getTime()) ? new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10) : "?"; };
@@ -370,8 +475,17 @@ export class DatenState {
       const w = wochen[woche(tag)] || (wochen[woche(tag)] = Object.fromEntries(VK.map(k => [k, 0])));
       for (const k of VK) w[k] += zahl(tv[k]);
     }
+    // gefahrene Fahrten mit Echtzeit einer Woche: ohne „ohne Echtzeit“ und ohne die nicht gefahrenen Ausfälle
+    const gefahren = w => w.n - w.oe - Math.max(0, w.aus - w.ausSp);
+    // einzelne Ausfälle der letzten 30 Tage
+    const fTage = (Array.isArray(s.fTage) ? s.fTage : []).filter(t => t >= new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - 29 * 864e5).toISOString().slice(0, 10));
+    const fWerte = fTage.length ? await this.s.get(fTage.map(t => "s4f:" + t)) : new Map();
+    const ausfaelle = [];
+    for (const [k, l] of fWerte) for (const r of Array.isArray(l) ? l : []) if (r && ["g", "s", "v", "f"].includes(r.art) && Number.isFinite(r.p))
+      ausfaelle.push({ tag: k.slice(4), p: r.p, t: Number.isFinite(r.t) ? r.t : r.p, v: zahl(r.v), art: r.art, z: typeof r.z === "string" ? r.z : "", n: Number.isFinite(r.n) ? r.n : null, g: Array.isArray(r.g) && typeof r.g[0] === "string" ? r.g[0] : "" });
+    ausfaelle.sort((a, b) => b.p - a.p);
     const summe = ab => {
-      const z = { n: 0, kurz: 0 }, v = Object.fromEntries(VK.map(k => [k, 0])), h = { n: 0, ...Object.fromEntries(HK.map(k => [k, 0])) }, g = {};
+      const z = { n: 0, kurz: 0 }, v = Object.fromEntries(VK.map(k => [k, 0])), h = { n: 0, aus: 0, ...Object.fromEntries(HK.map(k => [k, 0])) }, g = {};
       let vAb = null;
       for (const [tag, t] of Object.entries(s.tage)) {
         if (ab && tag < ab) continue;
@@ -380,23 +494,27 @@ export class DatenState {
         if (tv) {
           for (const k of VK) v[k] += zahl(tv[k]);
           if (!vAb || tag < vAb) vAb = tag;
-          const oe = zahl(tv.oe), w = wochen[woche(tag)], mit = w.n - w.oe;
-          if (oe && mit > 0) { h.n += oe; for (const k of HK) h[k] += oe * w[k] / mit; }
+          const oe = zahl(tv.oe), w = wochen[woche(tag)], basis = gefahren(w);
+          if (oe && basis > 0) { h.n += oe; for (const k of HK) h[k] += oe * w[k] / basis; }
         }
         for (const [text, n] of Object.entries(t.g || {})) g[text] = (g[text] || 0) + n;
       }
-      for (const k of HK) h[k] = Math.round(h[k] * 1000) / 1000;
-      return { ...z, v, vAb, h, top: Object.entries(g).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de")).slice(0, 10) };
+      h.aus = h.ausSp;   // geschätzte Ausfälle sind nur „zu spät“ (gestrichen, verschwunden und fehlend ist immer bekannt)
+      for (const k of Object.keys(h)) if (k !== "n") h[k] = Math.round(h[k] * 1000) / 1000;
+      return { ...z, v, vAb, h, top: Object.entries(g).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "de")).slice(0, 10),
+        ausfaelle: ausfaelle.filter(a => !ab || a.tag >= ab).slice(0, 40) };
     };
     // erster Tag des Zeitraums nach dem Kalender (nicht „jetzt minus 24 h“ – sonst um die Zeitumstellung ein Tag zu viel/wenig)
     const vorTagen = k => new Date(Date.parse(s4Tag(now) + "T12:00:00Z") - k * 864e5).toISOString().slice(0, 10);
     // „gezählt seit“: nach zwei Jahren wandert der Anfang mit (alte Tage sind gelöscht)
     const erster = Object.keys(s.tage).sort()[0], seit = s.seit && erster && erster > s.seit ? erster : s.seit;
-    // Verlauf je Woche (die letzten 12 mit Aufteilung, älteste zuerst): Anteile bezogen auf die Fahrten mit Echtzeit (mit) –
-    // das ist zugleich der hochgerechnete Anteil aller Fahrten der Woche (Fahrten ohne Echtzeit bekommen genau diese Verteilung)
+    // Verlauf je Woche (die letzten 12 mit Aufteilung, älteste zuerst): mit = Fahrten mit bekanntem Ausgang; die Anteile sind
+    // zugleich die hochgerechneten aller Fahrten der Woche
     const verlauf = Object.entries(wochen).filter(([ab]) => /^\d{4}-\d{2}-\d{2}$/.test(ab)).sort((a, b) => (a[0] < b[0] ? -1 : 1)).slice(-12)
       .map(([ab, w]) => ({ ab, n: w.n, mit: Math.max(0, w.n - w.oe), sp: w.og + w.mg, aus: w.aus }));
-    return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) }, wochen: verlauf };
+    const so = hilfe.soll;
+    return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) }, wochen: verlauf,
+      soll: so ? { version: so.version, quelle: so.quelle, bis: so.bis } : null };
   }
 
   // Name für Freistellungen: Ablage + Kurzmarke ihres einzigen Zugangs. Ablagen mit mehreren Zugängen (Bild: PIN und

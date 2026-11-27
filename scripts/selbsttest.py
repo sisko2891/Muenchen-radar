@@ -10,8 +10,9 @@ Umgebung: GITHUB_REPOSITORY, GH_TOKEN (Abläufe lesen), HEIZUNG_PASS, LICHT_PASS
           Start von Hand der Montagstest nicht aus, der zweite Anstoß desselben Montags aber schon).
 """
 import hashlib, json, os, re, sys, urllib.error, urllib.request
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 WURZEL = Path(__file__).resolve().parent.parent
 OUT = WURZEL / "data" / "selbsttest.json"
@@ -147,6 +148,21 @@ def dienste_pruefen(t, dienste, herkunft, jetzt):
         t.p(k, c == 200, text)
 
 
+def fahrplan_pruefen(t, seite, dienste, herkunft, jetzt):
+    """Soll-Fahrplan der S4 (data/s4-soll.json, wöchentlich vom MVV): reicht er noch eine Woche, und kennt ihn der Zähler?"""
+    c, _, d = holen(seite + "data/s4-soll.json")
+    tage = (json_von(d) or {}).get("tage") if c == 200 else None
+    in7 = (jetzt.astimezone(ZoneInfo("Europe/Berlin")).date() + timedelta(days=7)).isoformat()
+    if not isinstance(tage, dict) or not tage.get(in7):
+        t.p("fahrplan", False, "Soll-Fahrplan der S4 veraltet (Ablauf „Soll-Fahrplan der S4 holen“ prüfen)")
+        return
+    u = dienste.get("daten")
+    c2, _, d2 = holen(u + "/s4", {"Origin": herkunft}) if u else (0, {}, b"")
+    so = (json_von(d2) or {}).get("soll") if c2 == 200 else None
+    ok = isinstance(so, dict) and bool(so.get("version"))
+    t.p("fahrplan", ok, "Soll-Fahrplan der S4 aktuell" if ok else "S4-Zähler kennt den Soll-Fahrplan nicht")
+
+
 def main():
     jetzt = datetime.now(timezone.utc)
     if os.environ.get("SELBSTTEST_ANLASS") == "zeitplan" and OUT.exists():
@@ -162,6 +178,7 @@ def main():
     dienste = seite_pruefen(t, seite, herkunft, jetzt)
     ablauf_pruefen(t, repo, os.environ.get("GH_TOKEN", ""), jetzt)
     dienste_pruefen(t, dienste, herkunft, jetzt)
+    fahrplan_pruefen(t, seite, dienste, herkunft, jetzt)
     ok = all(p["ok"] for p in t.punkte)
     if os.environ.get("GITHUB_OUTPUT"):   # nur ein echter Test bewertet den Lauf (ein übersprungener meldet nichts doppelt)
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:
