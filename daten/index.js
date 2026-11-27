@@ -50,7 +50,7 @@ const json = (req, status, body) =>
 // Alle 5 Minuten werden die Abfahrten der S4 ab Aubing Richtung Innenstadt gelesen (siehe scheduled). Je Fahrt zählt der
 // letzte Stand vor der Abfahrt: fuhr sie mindestens bis Marienplatz, fiel sie aus, wie viel Verspätung, mit welchem Grund.
 const S4_URL = "https://www.mvg.de/api/bgw-pt/v3/departures?globalId=de:09162:1710&limit=40&transportTypes=SBAHN";
-// dieselben Regeln wie auf der Seite (js/app.js: WEST, KURZ, endetVorher)
+// dieselben Regeln wie auf der Seite (js/app.js: WEST, KURZ, endetVorher mit kurzHinweis)
 const S4_WEST = /Buchenau|Geltendorf|F[üu]rstenfeldbruck|Puchheim|Eichenau|Grafrath|T[üu]rkenfeld|Sch[öo]ngeising|Freiham|Neuaubing|Gilching|Germering/i;
 const S4_KURZ = /Leienfels|Pasing|\bLaim\b|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|\bHbf\b|Karlsplatz|Stachus|Heimeranplatz/i;
 // Hinweis der MVG „Fährt nur bis Pasing“ o. ä. (das Ziel bleibt dabei oft das ursprüngliche): endet vor dem Marienplatz
@@ -296,6 +296,8 @@ export class DatenState {
         }
       }
       if (Object.keys(neu).length) await this.s.put(neu);
+      // … und die noch offenen (von der früheren Fassung ohne diese Regel eingeordnet)
+      for (const f of Object.values(s.offen || {})) if (f && !f.kurz && Array.isArray(f.g) && f.g.some(s4KurzHinweis)) f.kurz = true;
       s.kurzHinweis = 1;
     }
     // Lücken des Zählers: über 12 min kein Lauf, oder nur Läufe ohne eine einzige S4 Richtung Innenstadt (Datenausfall der

@@ -1304,7 +1304,12 @@ let deps=[], depsOk=0;
 // Fährt der Zug bis mindestens Marienplatz? Ziele davor heißen: der Zug endet vor der Stammstrecke oder mittendrin
 // (so sieht es bei Bauarbeiten und Sperrungen aus, z. B. „Pasing“ statt „Ebersberg“)
 const KURZ=/Leienfels|Pasing|\bLaim\b|Hirschgarten|Donnersbergerbr|Hackerbr|Hauptbahnhof|\bHbf\b|Karlsplatz|Stachus|Heimeranplatz/i;
-const endetVorher=d=>!!d.sev||(!/Berg am Laim/i.test(d.destination)&&KURZ.test(d.destination));
+// Oft bleibt das Ziel das ursprüngliche (z. B. „Haar“) und nur ein Hinweis sagt „Fährt nur bis Pasing“ – gleiche Regel wie im Zähler
+const kurzHinweis=t=>/\b(nur bis|endet|wendet)\b/i.test(t)&&KURZ.test(String(t).replace(/Berg am Laim/gi,""));
+const hinweisKurz=d=>(Array.isArray(d.infos)?d.infos:[]).map(i=>String(i?.message??"")).find(kurzHinweis)||"";
+const zielKurz=d=>!/Berg am Laim/i.test(d.destination)&&KURZ.test(d.destination);
+const endetVorher=d=>!!d.sev||zielKurz(d)||!!hinweisKurz(d);
+const kurzEnde=d=>zielKurz(d)?d.destination:((hinweisKurz(d).replace(/Berg am Laim/gi,"").match(KURZ)||[d.destination])[0]);   // wo der Zug tatsächlich endet
 const depT=d=>d.realtimeDepartureTime||d.plannedDepartureTime;
 const depsFrisch=()=>deps.length>0&&Date.now()-depsOk<180000;
 const stadtZuege=()=>deps.filter(d=>!WEST.test(d.destination)&&depT(d)>Date.now()-30000);
@@ -1317,7 +1322,7 @@ const FREI=/aufgehoben|wieder (?:frei|befahrbar|freigegeben|aufgenommen)|nicht m
 function depAlarm(){
   const zuege=depsFrisch()?stadtZuege():[];
   const fahr=zuege.filter(d=>!d.cancelled), erster=fahr[0];
-  const wo=d=>d.sev?"Ersatzverkehr statt S-Bahn":`Endstation: ${d.destination}`;
+  const wo=d=>d.sev?"Ersatzverkehr statt S-Bahn":`Endstation: ${kurzEnde(d)}`;
   const wann=d=>(dayKey(new Date(depT(d)).toISOString())===berlinDay()?"":fmtD(depT(d))+" ")+fmtT(depT(d));
   if(zuege.length&&zuege.slice(0,3).every(d=>d.cancelled))return {l:"rot",t:"S4 fällt aus",s:"Die nächsten Züge Richtung Innenstadt entfallen."};
   if(erster&&endetVorher(erster)){
@@ -2056,7 +2061,7 @@ function renderNight(){
   const now=Date.now();
   const frisch=typeof deps!=="undefined"&&now-depsOk<6*60000;   // nachts wird alle 2 min abgerufen: älter als 6 min gilt als veraltet
   const d=(frisch?deps:[]).filter(x=>!WEST.test(x.destination)&&!x.cancelled&&(x.realtimeDepartureTime||x.plannedDepartureTime)>now)[0];
-  if(d){const t=d.realtimeDepartureTime||d.plannedDepartureTime;rows.push(it("S4 → Innenstadt",fmtT(t),`in ${Math.max(0,Math.round((t-now)/60000))} min`+(d.delayInMinutes>0?` · +${Math.round(d.delayInMinutes)}`:"")+(endetVorher(d)?(d.sev?" · Ersatzverkehr":` · nur bis ${esc(d.destination)}`):"")));}
+  if(d){const t=d.realtimeDepartureTime||d.plannedDepartureTime;rows.push(it("S4 → Innenstadt",fmtT(t),`in ${Math.max(0,Math.round((t-now)/60000))} min`+(d.delayInMinutes>0?` · +${Math.round(d.delayInMinutes)}`:"")+(endetVorher(d)?(d.sev?" · Ersatzverkehr":` · nur bis ${esc(kurzEnde(d))}`):"")));}
   else rows.push(it("S4 → Innenstadt","–",frisch?"keine Abfahrt in Sicht":"Abfahrten gerade nicht abrufbar"));
   const fw=typeof fensterWarnung==="function"?fensterWarnung():null;
   if(fw)rows.push(it("Fenster offen",esc(fw.namen),`seit ${dauerTxt(now-fw.seit)}${fw.aussen!=null?` · draußen ${fw.aussen}°`:""}`));
