@@ -442,7 +442,7 @@ function s4Ausfall(a){
   const wt=new Date(p).toLocaleDateString("de-DE",{weekday:"short",...wo}).replace(".",""), tg=new Date(p).toLocaleDateString("de-DE",{day:"2-digit",month:"2-digit",...wo});
   const g=a.g?` · „${esc(a.g)}“`:"";
   const was=art==="f"?"stand im Fahrplan, die MVG hat sie nie angezeigt"
-    :art==="g"?"von der MVG gestrichen"+g
+    :art==="g"?(a.q==="db"?"von der Deutschen Bahn gestrichen":"von der MVG gestrichen")+g
     :art==="v"?"erst angezeigt, dann vor der Abfahrt aus der Anzeige verschwunden"+g
     :`fuhr ${fmtT(a.t)} (+${fz0(a.v)} min)${a.n!==null?` – laut Fahrplan war die nächste um ${fmtT(a.n)}`:""}${g}`;
   return `<div class="s4-a"><span class="t">${esc(wt)} ${fmtT(p)}<small>${esc(tg)}</small></span><span class="w"><b>→ ${esc(a.z||"S4")}</b><small>${was}</small></span><span class="s4-tag ${art}">${S4_ARTEN[art]}</span></div>`;
@@ -457,7 +457,7 @@ function s4Zeigen(meldung){
   const v=z.v&&typeof z.v==="object"?z.v:{}, vn=zahl(v,"n"), aus=Math.min(vn,zahl(v,"aus")), oe=Math.min(vn-aus,zahl(v,"oe")), mg=Math.min(vn-aus-oe,zahl(v,"mg")), og=Math.min(vn-aus-oe-mg,zahl(v,"og"));
   // Ausgefallen nach Art: zu spät (ausSp), verschwunden (ausVw), fehlte (ausFe), der Rest gestrichen
   const ausSp=Math.min(aus,zahl(v,"ausSp")), ausVw=Math.min(aus-ausSp,zahl(v,"ausVw")), ausFe=Math.min(aus-ausSp-ausVw,zahl(v,"ausFe")), ausG=aus-ausSp-ausVw-ausFe;
-  const bau=zahl(v,"bau"), zus=Math.min(vn,zahl(v,"zus"));
+  const bau=zahl(v,"bau"), zus=Math.min(vn,zahl(v,"zus")), dbN=Math.min(vn,zahl(v,"db"));   // dbN: mit der Echtzeit der DB gezählt (Reserve)
   // Hochrechnung (z.h, vom Zähler): Fahrten ohne Echtzeit bekommen die Verteilung der gefahrenen Fahrten mit Echtzeit ihrer
   // Woche. Kommazahlen, gekappt wie oben – zusammen nie mehr als die geschätzten Fahrten
   const h=z.h&&typeof z.h==="object"?z.h:{}, kz=x=>{x=+x;return Number.isFinite(x)&&x>0?x:0;};
@@ -484,11 +484,12 @@ function s4Zeigen(meldung){
   const zeilen=[["ok","pünktlich","unter 5 min",rOk,OK],["mg","ab 5 min, mit Grund",schnitt(minMg,MG),rMg,MG],["og","ab 5 min, ohne Grund",schnitt(minOg,OG),rOg,OG],["aus","ausgefallen",ausArt,rAus,AUS]];
   if(OE>=0.5)zeilen.push(["oe","ohne Echtzeit","Verspätung unbekannt",rOe,OE]);
   const hinweise=[zus?`${zus===1?"1 Fahrt zeigte":fz(zus)+" Fahrten zeigte"} die MVG zusätzlich (nicht im Fahrplan) – ${zus===1?"sie zählt":"sie zählen"} mit.`:"",
+    dbN?`Bei ${dbN===1?"1 Fahrt":fz(dbN)+" Fahrten"} ohne Echtzeit der MVG stammt sie von der Deutschen Bahn.`:"",
     he?`${he===1?"1 Fahrt":fz(he)+" Fahrten"} ohne Echtzeit („laut Fahrplan“) ${he===1?"ist":"sind"} nach dem Schnitt ihrer Woche verteilt (geschätzt).`:"",
     bau?`${bau===1?"1 Fahrt entfiel":fz(bau)+" Fahrten entfielen"} wegen angekündigter Bauarbeiten – ${bau===1?"sie zählt":"sie zählen"} nicht.`:""].filter(Boolean).join(" ");
   // einzelne Ausfälle (vom Zähler: höchstens die 40 neuesten der letzten 30 Tage); fehlt die Liste (ältere Fassung), kein Abschnitt
   const ausL=Array.isArray(z.ausfaelle)?z.ausfaelle.filter(a=>a&&typeof a==="object"&&Number.isFinite(a.p)&&Object.hasOwn(S4_ARTEN,a.art)).slice(0,40).map(a=>({p:a.p,art:a.art,
-    t:Number.isFinite(a.t)?a.t:a.p,v:ganz(a.v),n:Number.isFinite(a.n)?a.n:null,z:typeof a.z==="string"?a.z.slice(0,40):"",g:typeof a.g==="string"?a.g.slice(0,80):""})):null;
+    t:Number.isFinite(a.t)?a.t:a.p,v:ganz(a.v),n:Number.isFinite(a.n)?a.n:null,z:typeof a.z==="string"?a.z.slice(0,40):"",g:typeof a.g==="string"?a.g.slice(0,80):"",q:a.q==="db"?"db":""})):null;
   $("#s4-stand").textContent=seit?`gezählt seit ${seit}`:"";
   box.innerHTML=`<div class="s4-leiste"><div class="s4-tabs" role="group" aria-label="Zeitraum">${S4_ZEITEN.map(([k,t])=>`<button type="button" data-z="${k}" aria-pressed="${k===s4Zeit}">${t}</button>`).join("")}</div>
       <span class="s4-anz"><b>${fz(n)}</b> ${basis}</span></div>
@@ -515,9 +516,9 @@ function s4Zeigen(meldung){
       <div class="s4-g">${top.length?top.map((t,i)=>`<div class="s4-r"><i>${i+1}</i><span title="${esc(t[0])}">${esc(t[0])}</span><div class="s4-bar"><u style="width:${Math.round(t[1]/max*100)}%"></u></div><em>${fz(t[1])}</em></div>`).join(""):`<div class="empty">${n?"In diesem Zeitraum wurde kein Grund genannt.":"Noch keine Fahrten gezählt."}</div>`}</div>
       ${s4Zeit==="alle"?s4Verlauf(s4Daten.wochen):""}
       <div class="s4-abgl">${so?`<b>Abgleich mit dem Fahrplan:</b> Grundlage ist der Soll-Fahrplan des MVV (offene Fahrplandaten, CC BY 4.0${sollStand?", "+esc(sollStand):""}). Jede Fahrt daraus wird mit der Anzeige der MVG verglichen.`:`<b>So wird gezählt:</b>`}
-        Als <b>ausgefallen</b> zählt eine S4, wenn die MVG sie streicht, wenn sie erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte (eine gestrichene zählt dabei nicht als „die nächste“), wenn sie vor der Abfahrt aus der Anzeige verschwindet${so?" oder wenn die MVG sie nie angezeigt hat. Lief der Zähler gerade nicht oder lieferte die MVG keine Daten, zählt eine fehlende Fahrt nicht":""}. Fahrten, die wegen angekündigter Bauarbeiten entfallen, zählen nicht.</div>
+        Als <b>ausgefallen</b> zählt eine S4, wenn die MVG (ohne ihre Echtzeit: die Deutsche Bahn) sie streicht, wenn sie erst abfährt, wenn laut Fahrplan schon die nächste fahren sollte (eine gestrichene zählt dabei nicht als „die nächste“), wenn sie vor der Abfahrt aus der Anzeige verschwindet${so?" oder wenn die MVG sie nie angezeigt hat. Lief der Zähler gerade nicht oder lieferte die MVG keine Daten, zählt eine fehlende Fahrt nicht":""}. Fahrten, die wegen angekündigter Bauarbeiten entfallen, zählen nicht.</div>
     </div></div>
-    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt. Endet eine S4 vorher (etwa in Pasing) oder fährt Ersatzverkehr, zählt sie als „nicht bis Marienplatz“; ausgefallene Fahrten zählen dort nicht. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
+    <div class="s4-f">${s4Fehler?`⚠ Statistik gerade nicht abrufbar (${esc(s4Fehler)}) – gezeigt wird der Stand von ${fmtT(s4Geholt)}. `:alt?"⚠ Die Zählung läuft gerade nicht (letzter Abruf "+(s4Daten.stand?fmtD(s4Daten.stand)+" "+fmtT(s4Daten.stand):"unbekannt")+"). ":""}Gezählt wird jede S4 ab Aubing Richtung Innenstadt mit ihrem letzten Stand vor der Abfahrt; fehlt der MVG die Echtzeit, nimmt der Zähler die der Deutschen Bahn. Endet eine S4 vorher (etwa in Pasing) oder fährt Ersatzverkehr, zählt sie als „nicht bis Marienplatz“; ausgefallene Fahrten zählen dort nicht. Ein Zug kann mehrere Gründe haben.${vn<n?` Verspätungen mit Grund werden ${tagD(z.vAb)?"erst seit "+tagD(z.vAb):"ab jetzt"} gezählt${vn?` – die Aufteilung beruht auf ${fz(vn)} der ${fz(n)} Fahrten`:""}.`:""}</div>`;
 }
 async function s4Auf(){
   s4WvWahl=-1;s4AlleAus=false;$("#s4stat").hidden=false;s4Zeigen();

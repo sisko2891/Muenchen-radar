@@ -169,6 +169,25 @@ def fahrplan_pruefen(t, seite, dienste, herkunft, jetzt):
     t.p("fahrplan", ok, "Soll-Fahrplan der S4 aktuell" if ok else "S4-Zähler holt den Soll-Fahrplan nicht mehr")
 
 
+def db_pruefen(t, seite, dienste, herkunft, jetzt):
+    """Reserve-Echtzeit der DB für den S4-Zähler (Fahrten ohne Echtzeit der MVG): zuletzt vor höchstens 2 h geholt?"""
+    u = dienste.get("daten")
+    c, _, d = holen(u + "/s4", {"Origin": herkunft}) if u else (0, {}, b"")
+    db = (json_von(d) or {}).get("db") if c == 200 else None
+    jung = lambda x, h: isinstance(x, (int, float)) and jetzt.timestamp() * 1000 - x < h * 3600e3
+    echt = jung(db.get("ok"), 2) if isinstance(db, dict) else False
+    # ohne den Fahrplan der DB (S4 Richtung Innenstadt) lässt sich keine Fahrt zuordnen; nachts ist er leer, daher großzügig.
+    # Fährt laut Soll heute gar keine S4 (Vollsperrung), genügt ein gelungener (leerer) Abruf.
+    plan = jung(db.get("plan"), 26) if isinstance(db, dict) else False
+    if not plan and isinstance(db, dict) and jung(db.get("abruf"), 3):
+        c3, _, d3 = holen(seite + "data/s4-soll.json")
+        tage = (json_von(d3) or {}).get("tage") if c3 == 200 else None
+        heute = jetzt.astimezone(ZoneInfo("Europe/Berlin")).date().isoformat()
+        plan = isinstance(tage, dict) and not tage.get(heute)
+    t.p("dbecht", echt and plan, "Echtzeit der DB (Reserve des S4-Zählers) erreichbar" if echt and plan
+        else "S4-Zähler bekommt keine Echtzeit der DB (Reserve) mehr" if not echt else "S4-Zähler bekommt den Fahrplan der DB (Reserve) nicht mehr")
+
+
 def main():
     jetzt = datetime.now(timezone.utc)
     if os.environ.get("SELBSTTEST_ANLASS") == "zeitplan" and OUT.exists():
@@ -185,6 +204,7 @@ def main():
     ablauf_pruefen(t, repo, os.environ.get("GH_TOKEN", ""), jetzt)
     dienste_pruefen(t, dienste, herkunft, jetzt)
     fahrplan_pruefen(t, seite, dienste, herkunft, jetzt)
+    db_pruefen(t, seite, dienste, herkunft, jetzt)
     ok = all(p["ok"] for p in t.punkte)
     if os.environ.get("GITHUB_OUTPUT"):   # nur ein echter Test bewertet den Lauf (ein übersprungener meldet nichts doppelt)
         with open(os.environ["GITHUB_OUTPUT"], "a") as f:

@@ -65,7 +65,64 @@ const S4_NEUSTART = "2026-11-26";
 const S4_MELD_URL = "https://www.mvg.de/api/bgw-pt/v3/messages?messageTypes=SCHEDULE_CHANGE", S4_BAU_MAX = 30 * 864e5;
 const S4_BAU_TEXT = /Bauarbeit|Baumaßnahme|Baustelle|Gleisbau/i;
 const s4Tag = ms => new Date(ms).toLocaleDateString("sv-SE", { timeZone: "Europe/Berlin" });
-let s4Merk = null;                                  // Antwort für die Seite kurz merken (eine Minute je Rechner-Instanz)
+// Reserve für die Echtzeit: Fehlt sie bei der MVG für eine Fahrt, nimmt der Zähler die der Deutschen Bahn (Abfahrtsdaten
+// „IRIS“ für den Bahnhof Aubing, öffentlich, ohne Schlüssel). Die MVG bleibt die Hauptquelle – sobald sie Echtzeit hat,
+// gilt ihre. Von der DB kommen nur: Abfahrt (ct), gestrichen (cs="c"), geänderter Laufweg (cpth) und Verspätungsgründe.
+const S4_DB_URL = "https://iris.noncd.db.de/iris-tts/timetable", S4_DB_EVA = "8004141";
+// Gründe (Nachrichten t="d" mit Nummer) im Wortlaut der DB – so, wie die MVG sie auch zeigt
+const S4_DB_GRUND = { 2: "Polizeieinsatz", 3: "Feuerwehreinsatz auf der Strecke", 4: "Kurzfristiger Personalausfall", 5: "Ärztliche Versorgung eines Fahrgastes",
+  6: "Unbefugtes Ziehen der Notbremse", 7: "Unbefugte Personen auf der Strecke", 8: "Notarzteinsatz auf der Strecke", 9: "Streikauswirkungen",
+  10: "Tiere auf der Strecke", 11: "Unwetter", 13: "Pass- und Zollkontrolle", 14: "Technischer Defekt am Bahnhof", 15: "Beeinträchtigung durch Vandalismus",
+  16: "Entschärfung einer Fliegerbombe", 17: "Beschädigung einer Brücke", 18: "Umgestürzter Baum auf der Strecke", 19: "Unfall an einem Bahnübergang",
+  20: "Tiere im Gleis", 21: "Warten auf Anschlussreisende", 22: "Witterungsbedingte Beeinträchtigungen", 23: "Betriebsstabilisierung", 24: "Verspätung im Ausland",
+  25: "Bereitstellung weiterer Wagen", 26: "Abhängen von Wagen", 28: "Gegenstände auf der Strecke", 29: "Ersatzverkehr mit Bus ist eingerichtet",
+  30: "Personalausfall im Stellwerk", 31: "Bauarbeiten", 32: "Längere Haltezeit am Bahnhof", 33: "Reparatur an der Oberleitung", 34: "Reparatur an einem Signal",
+  35: "Streckensperrung", 36: "Technische Störung am Zug", 37: "Kurzfristiger Fahrzeugausfall", 38: "Reparatur an der Strecke", 39: "Stau / Hohes Verkehrsaufkommen",
+  40: "Defektes Stellwerk", 41: "Technischer Defekt an einem Bahnübergang", 42: "Vorübergehend verminderte Geschwindigkeit auf der Strecke",
+  43: "Verspätung eines vorausfahrenden Zuges", 44: "Warten auf einen entgegenkommenden Zug", 45: "Vorfahrt eines anderen Zuges", 46: "Vorfahrt eines anderen Zuges",
+  47: "Verspätete Bereitstellung", 48: "Verspätung aus vorheriger Fahrt", 49: "Kurzfristiger Personalausfall", 50: "Kurzfristige Erkrankung von Personal",
+  51: "Verspätetes Personal aus vorheriger Fahrt", 52: "Streik", 53: "Unwetterauswirkungen", 54: "Verfügbarkeit der Gleise derzeit eingeschränkt",
+  55: "Technischer Defekt an einem anderen Zug", 57: "Zusätzlicher Halt zum Ein- und Ausstieg", 58: "Umleitung des Zuges", 59: "Schnee und Eis",
+  60: "Witterungsbedingt verminderte Geschwindigkeit", 61: "Defekte Tür", 62: "Behobener Defekt am Zug", 63: "Technische Untersuchung am Zug",
+  64: "Reparatur an einer Weiche", 65: "Erdrutsch", 66: "Hochwasser", 67: "Behördliche Maßnahme", 68: "Hohes Fahrgastaufkommen verlängert Ein- und Ausstieg",
+  69: "Zug verkehrt mit verminderter Geschwindigkeit", 99: "Verzögerungen im Betriebsablauf" };
+// Zeiten der DB: JJMMTTHHMM in deutscher Ortszeit. Abgeglichen wird über diese Schreibweise (Planzeit der MVG umgerechnet).
+const S4_LOKAL = new Intl.DateTimeFormat("de-DE", { timeZone: "Europe/Berlin", year: "2-digit", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+const s4Lokal = ms => { const t = Object.fromEntries(S4_LOKAL.formatToParts(new Date(ms)).map(x => [x.type, x.value])); return t.year + t.month + t.day + t.hour + t.minute; };
+const s4LokalNaiv = k => Date.UTC(2000 + +k.slice(0, 2), +k.slice(2, 4) - 1, +k.slice(4, 6), +k.slice(6, 8), +k.slice(8, 10));
+// Ortszeit k → Zeitpunkt (ms), mit dem Versatz zur Ortszeit um „nah“ (zweimal, falls dazwischen die Uhr umgestellt wird);
+// NaN, wenn es k nicht eindeutig gibt
+const s4VonLokal = (k, nah) => {
+  if (!/^\d{10}$/.test(k || "") || !Number.isFinite(nah)) return NaN;
+  const versatz = ms => s4LokalNaiv(s4Lokal(ms)) - (ms - (((ms % 60e3) + 60e3) % 60e3));
+  const t1 = s4LokalNaiv(k) - versatz(nah), t2 = s4LokalNaiv(k) - versatz(t1);
+  return s4Lokal(t2) === k ? t2 : s4Lokal(t1) === k ? t1 : NaN;
+};
+const s4XmlText = x => String(x).replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);/gi, (g, e) => {
+  const n = ({ amp: "&", lt: "<", gt: ">", quot: '"', apos: "'" })[e.toLowerCase()];
+  if (n !== undefined) return n;
+  const z = e[1] === "x" || e[1] === "X" ? parseInt(e.slice(2), 16) : +e.slice(1);
+  return Number.isInteger(z) && z >= 0 && z <= 0x10ffff ? String.fromCodePoint(z) : g;   // ungültige Zeichennummer: so lassen
+});
+const s4XmlAttr = roh => { const a = {}; for (const m of String(roh).matchAll(/([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g)) a[m[1]] = s4XmlText(m[2] ?? m[3]); return a; };
+// Halte einer IRIS-Antwort (plan oder fchg): je <s> die Kennung und die Abfahrt (dp) mit ihren Nachrichten. Anschlüsse
+// (<conn>, darin ein eigenes <s> eines anderen Zuges) werden vorher entfernt; ein leeres <s …/> hat keine Abfahrt.
+function s4Iris(xml) {
+  const out = [], x = String(xml || "").replace(/<conn\b[^>]*?(?:\/>|>[\s\S]*?<\/conn>)/g, "");
+  for (const s of x.matchAll(/<s\b([^>]*?)(?:\/>|>([\s\S]*?)<\/s>)/g)) {
+    if (s[2] === undefined) continue;
+    try {
+      const id = s4XmlAttr(s[1]).id, dp = s[2].match(/<dp\b([^>]*?)(?:\/>|>([\s\S]*?)<\/dp>)/);
+      if (!id || !dp) continue;
+      const m = [...String(dp[2] || "").matchAll(/<m\b([^>]*?)\/?>/g)].map(x => s4XmlAttr(x[1]));
+      out.push({ id, dp: s4XmlAttr(dp[1]), m });
+    } catch { /* ein kaputter Halt verdirbt nicht die übrigen */ }
+  }
+  return out;
+}
+// Richtung Innenstadt: erster Halt nach Aubing ist Leienfelsstraße (bei Bauarbeiten auch gleich Pasing)
+const s4DbOst = dp => dp && /^S\s*4$/i.test(dp.l || "") && /Leienfels|Pasing/i.test(String(dp.ppth || dp.cpth || "").split("|")[0]);
+let s4Merk = null;                                 // Antwort für die Seite kurz merken (eine Minute je Rechner-Instanz)
 
 export default {
   async fetch(req, env) {
@@ -250,7 +307,12 @@ export class DatenState {
   async fetch(req) {
     const url = new URL(req.url), teile = url.pathname.split("/").filter(Boolean);   // /blob/<name> | /zugang/<name> | /stand/<name>
     // S4-Zähler: nur von innen erreichbar (der äußere Dienst reicht /s4/… von außen nie durch)
-    if (url.pathname === "/s4/zaehlen" && req.method === "POST") return json(req, 200, await this.s4Zaehlen(await req.json().catch(() => null), Date.now()));
+    if (url.pathname === "/s4/zaehlen" && req.method === "POST") {
+      const liste = await req.json().catch(() => null), now = Date.now();
+      // Reserve-Echtzeit der DB: scheitert sie, zählt der Zähler wie bisher nur mit der MVG
+      const db = Array.isArray(liste) ? await this.s4Db(now).catch(e => { console.log("DB-Echtzeit: Fehler (" + e.message + ")"); return null; }) : null;
+      return json(req, 200, await this.s4Zaehlen(liste, now, db));
+    }
     if (url.pathname === "/s4/lesen") return json(req, 200, await this.s4Lesen(Date.now()));
     if (url.pathname === "/s4/hilfe" && req.method === "POST") return json(req, 200, await this.s4Hilfe(await req.json().catch(() => null), Date.now()));   // ohne Körper: selbst holen
     const [art, name] = teile;
@@ -275,8 +337,38 @@ export class DatenState {
   // Ausgefallen ist eine Fahrt, wenn die MVG sie streicht oder wenn sie erst abfährt, wenn laut Fahrplan schon die nächste
   // S4 Richtung Innenstadt fahren sollte („zu spät“). Jede gezählte Fahrt wird zusätzlich einzeln gemerkt (S4_FAHRTEN_TAGE),
   // damit sich die Regeln später auch für vergangene Fahrten nachrechnen lassen.
-  async s4Zaehlen(liste, now) {
+  // db: Reserve-Echtzeit der DB (s4Db) je Planabfahrt in Ortszeit, oder null. Sie gilt nur für Fahrten, zu denen die MVG
+  // keine Echtzeit hat und auch vorher keine hatte; die Fahrt trägt dann q = "db". Je solche Fahrt bleiben getrennt gemerkt:
+  // m – die eigenen Angaben der MVG aus ihrer jüngsten Anzeige (a gestrichen, k endet vorher, g Gründe) – und d – der letzte
+  // Stand der DB (t, v, a, k, g; z: wann die DB ihn zuletzt bestätigt hat). Jeder Lauf setzt die Fahrt daraus neu zusammen:
+  // Eine Streichung der MVG gilt immer, sonst der neueste Stand der DB; nimmt die DB ihre Angaben zurück, gilt wieder nur
+  // die MVG („ohne Echtzeit“).
+  async s4Zaehlen(liste, now, db = null) {
     if (!Array.isArray(liste)) return { ok: false };
+    const mvgVon = a => (a && a.m && typeof a.m === "object" ? a.m
+      : a && a.q !== "db" ? { a: !!a.aus, k: !!a.kurz, g: Array.isArray(a.g) ? a.g : [] } : { a: false, k: false, g: [] });   // ältere Einträge ohne m
+    const dbFrisch = f => !!f && f.q === "db" && !!f.d && f.d.z >= now - 10 * 60e3;   // die DB hat die Fahrt eben noch bestätigt
+    const dbSetzen = (f, p) => {
+      const m = f.m && typeof f.m === "object" ? f.m : (f.m = mvgVon(f));
+      const e = db && typeof db === "object" ? db[s4Lokal(p)] : null;
+      // Herbst: Die Uhrzeit dieser Stunde gibt es zweimal – nicht eindeutig zuzuordnen
+      const zweimal = s4Lokal(p - 3600e3) === s4Lokal(p) || s4Lokal(p + 3600e3) === s4Lokal(p);
+      if (e && typeof e === "object" && !zweimal) {
+        // Abfahrt der DB (Ortszeit) bezogen auf die Planzeit der MVG (eindeutig), sonst die vorberechnete
+        const c = typeof e.ct === "string" ? s4VonLokal(e.ct, p) : NaN, d0 = Number.isFinite(c) ? c - p : e.d;
+        const d = Number.isFinite(d0) && d0 >= -10 * 60e3 && d0 <= 6 * 3600e3 ? Math.max(0, d0) : null, a = !!e.aus;
+        // nichts Verwertbares (etwa Streichung aufgehoben ohne Zeit, oder zwei Fahrten zur selben Minute): kein Stand der DB
+        f.d = d !== null || a ? { t: a || d === null ? p : p + d, v: a || d === null ? 0 : Math.round(d / 60e3), a, k: !!e.kurz,
+          g: Array.isArray(e.g) ? e.g.slice(0, 4) : [], z: now } : null;
+      }
+      if (!m.a && f.d && typeof f.d === "object") {
+        f.rt = true; f.q = "db"; f.t = f.d.t; f.v = f.d.v; f.aus = !!f.d.a; f.kurz = !!m.k || !!f.d.k;
+        f.g = Array.isArray(m.g) && m.g.length ? m.g.slice(0, 4) : Array.isArray(f.d.g) ? f.d.g : [];   // Gründe der MVG gehen vor
+        if (!Number.isFinite(f.r1)) f.r1 = now;
+      } else if (f.q === "db") {   // die MVG streicht, oder die DB nimmt ihre Angaben zurück: nur die MVG
+        f.rt = false; delete f.q; f.aus = !!m.a; f.kurz = !!m.k; f.g = Array.isArray(m.g) ? m.g.slice(0, 4) : []; f.t = p; f.v = 0;
+      }
+    };
     let s = (await this.s.get("s4")) || { seit: s4Tag(now), offen: {}, tage: {}, fertig: {}, neu: S4_NEUSTART };
     s.fertig = s.fertig || {};
     const weg = [];   // Speicherwerte, die am Ende gelöscht werden
@@ -326,22 +418,28 @@ export class DatenState {
         kurz: !!d.sev || (!/Berg am Laim/i.test(d.destination || "") && S4_KURZ.test(d.destination || "")) || gruende.some(s4KurzHinweis), g: gruende,
         s: now, r1: alt?.r1 ?? (rt ? now : null), ziel: String(d.destination || "").slice(0, 40),
       };
-      // Echtzeit gerade weg: den letzten Echtzeitstand behalten (auch gestrichen, Ziel, Ersatzverkehr und Gründe)
-      if (!rt && alt?.rt) { f.t = alt.t; f.v = alt.v; f.rt = true; f.aus = f.aus || !!alt.aus; f.kurz = f.kurz || !!alt.kurz; if (!f.g.length && Array.isArray(alt.g)) f.g = alt.g; if (typeof alt.ziel === "string") f.ziel = alt.ziel; }
+      // Echtzeit der MVG gerade weg: ihren letzten Echtzeitstand behalten (auch gestrichen, Ziel, Ersatzverkehr und Gründe)
+      const mvgWeg = !rt && !!alt?.rt && alt.q !== "db";
+      if (mvgWeg) { f.t = alt.t; f.v = alt.v; f.rt = true; f.aus = f.aus || !!alt.aus; f.kurz = f.kurz || !!alt.kurz; if (!f.g.length && Array.isArray(alt.g)) f.g = alt.g; if (typeof alt.ziel === "string") f.ziel = alt.ziel; }
+      f.m = { a: f.aus, k: f.kurz, g: f.g };   // eigene Angaben der MVG
+      // ohne Echtzeit der MVG (auch vorher keine von ihr): die der DB (letzter Stand, dazu der neueste, falls da)
+      if (!rt && !mvgWeg) { if (alt?.d && typeof alt.d === "object") f.d = alt.d; dbSetzen(f, p); }
       s.offen[p] = f;
     }
+    // … ebenso für Fahrten, die die MVG nicht mehr anzeigt (etwa gleich nach der Planzeit) – die DB kennt sie noch Stunden
+    for (const [p, f] of Object.entries(s.offen)) if (!gelistet.has(p) && f && (f.rt === false || f.q === "db")) dbSetzen(f, +p);
     // Verschwunden: Die MVG zeigt eine Fahrt nicht mehr, obwohl sie noch bevorsteht und spätere Fahrten angezeigt werden
     // (die Liste reicht also über sie hinaus). Erst nach zwei solchen Läufen gilt sie als verschwunden (Aussetzer abfangen).
     const spaeteste = Math.max(-Infinity, ...[...gelistet].map(Number));
     for (const [p, f] of Object.entries(s.offen)) {
-      if (gelistet.has(p) || f.aus) continue;
+      if (gelistet.has(p) || f.aus || dbFrisch(f)) continue;   // die DB kennt ihre Abfahrt (eben bestätigt): nicht verschwunden
       if (+p > now + 2 * 60e3 && f.t > now + 2 * 60e3 && spaeteste > +p) f.fehlt = (f.fehlt || 0) + 1;
     }
     // Abfahrten laut Fahrplan aller bekannten, nicht gestrichenen Fahrten (noch offen oder in den letzten 6 h gezählt) – für
     // „zu spät“. Gestrichene zählen nicht als „die nächste“: Fährt die verspätete im Takt der gestrichenen (Zugtausch), ist
     // das ein Ausfall (die gestrichene), nicht zwei.
     s.fertigAus = s.fertigAus || {};
-    const plan = [...new Set([...Object.keys(s.offen).filter(p => !s.offen[p].aus && !(s.offen[p].fehlt >= 2)), ...Object.keys(s.fertig).filter(p => !s.fertigAus[p])])]
+    const plan = [...new Set([...Object.keys(s.offen).filter(p => !s.offen[p].aus && !(s.offen[p].fehlt >= 2 && !dbFrisch(s.offen[p]))), ...Object.keys(s.fertig).filter(p => !s.fertigAus[p])])]
       .map(Number).filter(Number.isFinite).sort((x, y) => x - y);
     const naechste = p => plan.find(x => x > p) ?? null;
     const fahrten = {};   // je Tag die eben gezählten Fahrten
@@ -349,13 +447,14 @@ export class DatenState {
       // v: Aufteilung der Fahrten mit eigener Fahrtenzahl (Tage ohne v stammen aus einer älteren Fassung). Ausgefallen (aus):
       // davon zu spät (ausSp), verschwunden (ausVw), fehlte im Fahrplan der MVG (ausFe), der Rest gestrichen. bau: wegen
       // angekündigter Bauarbeiten entfallen (zählt nirgends mit), zus: von der MVG gezeigt, aber nicht im Soll-Fahrplan
-      const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, ausVw: 0, ausFe: 0, bau: 0, zus: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0 });
+      // db: davon mit der Echtzeit der DB (Reserve) gezählt
+      const v = z.v || (z.v = { n: 0, aus: 0, ausSp: 0, ausVw: 0, ausFe: 0, bau: 0, zus: 0, og: 0, ogMin: 0, mg: 0, mgMin: 0, oe: 0, db: 0 });
       return { tag, z, v }; };
     const merken = (tag, r) => (fahrten[tag] || (fahrten[tag] = [])).push(r);
     const gruendeZaehlen = (z, gr) => { for (const g of gr) { if (g in z.g || Object.keys(z.g).length < 40) z.g[g] = (z.g[g] || 0) + 1; } };
     // abgefahren (zwei Minuten Nachlauf): zählen und vergessen
     for (const [p, f] of Object.entries(s.offen)) {
-      const vw = (f.fehlt || 0) >= 2 && !f.aus;   // verschwunden: gilt ab ihrer Abfahrtszeit laut Plan
+      const vw = (f.fehlt || 0) >= 2 && !f.aus && !dbFrisch(f);   // verschwunden: gilt ab ihrer Abfahrtszeit laut Plan
       if (!vw && f.t > now - 120e3) continue;
       if (vw && +p > now - 120e3) continue;
       // ohne Echtzeit, aber noch angezeigt: warten (höchstens 90 min nach Fahrplan) – vielleicht kommt die Echtzeit noch
@@ -364,13 +463,16 @@ export class DatenState {
       const n = naechste(+p), spaet = !f.aus && !vw && f.rt !== false && n !== null && f.t >= n;
       const gr = Array.isArray(f.g) ? f.g : [];
       // angekündigte Bauarbeiten: gestrichen mit Bau-Grund, oder verschwunden während einer befristeten S4-Baustelle
-      const bau = (f.aus && gr.some(x => S4_BAU_TEXT.test(x))) || (vw && bauAktiv(+p));
+      // (eine Streichung der DB auch mit dem Grund der DB – selbst wenn die MVG einen anderen Hinweis zeigt)
+      const ausDb = f.q === "db" && !vw, bauGr = ausDb && Array.isArray(f.d?.g) ? [...gr, ...f.d.g] : gr;
+      const bau = (f.aus && bauGr.some(x => S4_BAU_TEXT.test(x))) || (vw && bauAktiv(+p));
       const art = bau ? "b" : f.aus ? "g" : vw ? "v" : spaet ? "s" : "";
       const { tag, z, v } = tagVon(+p);
-      merken(tag, { p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0, ...(art ? { art } : {}),
+      merken(tag, { p: +p, t: f.t, v: f.v, rt: f.rt === false ? 0 : 1, a: f.aus ? 1 : 0, k: f.kurz ? 1 : 0, ...(art ? { art } : {}), ...(ausDb ? { q: "db" } : {}),
         n, s: Number.isFinite(f.s) ? f.s : null, r1: Number.isFinite(f.r1) ? f.r1 : null, z: typeof f.ziel === "string" ? f.ziel : "", g: gr });
       if (bau) { v.bau = (v.bau || 0) + 1; continue; }   // zählt nicht als Fahrt (offizielle Baustelle)
       z.n++; v.n++;
+      if (ausDb) v.db = (v.db || 0) + 1;
       if (imSoll(+p) === false) v.zus = (v.zus || 0) + 1;
       if (art) {   // ausgefallen; die Gründe zählen bei den Ursachen mit
         v.aus++;
@@ -491,6 +593,76 @@ export class DatenState {
     await this.s.put("s4hilfe", neu);
     return { ok: true };
   }
+  // Reserve-Echtzeit der DB für Aubing (siehe S4_DB_URL). Ergebnis: je Planabfahrt (Ortszeit JJMMTTHHMM) der S4 Richtung
+  // Innenstadt { d: Verspätung in ms oder null, aus, kurz, g } – nur Fahrten, zu denen die DB etwas weiß (Abfahrt oder
+  // gestrichen); null, wenn der Abruf scheitert. Nur der Fahrplan der DB (je Stunde) verbindet die Kennung einer Fahrt mit
+  // ihrer Planzeit in Aubing – er wird gemerkt (vor 2 h bis zur nächsten Stunde, je Stunde einmal geholt). roh nur für
+  // Tests: { "/plan/…": xml, "/fchg/…": xml oder Error } statt der Abrufe.
+  async s4Db(now, roh) {
+    const alt = (await this.s.get("s4db")) || {}, obj = x => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
+    const z = { plan: obj(alt.plan), h: obj(alt.h), ok: Number.isFinite(alt.ok) ? alt.ok : null, fehler: Number.isFinite(alt.fehler) ? alt.fehler : null };
+    const holen = async pfad => {
+      let x;
+      if (roh) { x = roh[pfad]; if (x instanceof Error) throw x; if (typeof x !== "string") throw new Error("404"); }
+      else {
+        const r = await fetch(S4_DB_URL + pfad, { headers: { "User-Agent": "Mozilla/5.0 (katzingers-castle S4-Zaehler)", Accept: "application/xml" }, signal: AbortSignal.timeout(10000) });
+        if (!r.ok) throw new Error(String(r.status));
+        x = await r.text();
+      }
+      if (!/<timetable\b/.test(x)) throw new Error("unerwartete Antwort");   // etwa eine Fehlerseite mit Status 200
+      return x;
+    };
+    // Fahrplan der Stunden von vor 2 h bis zur nächsten, je Stunde einmal; misslungene beim nächsten Lauf noch einmal, leere
+    // (keine S4 Richtung Innenstadt – nachts, oder eine gestörte Antwort) nach 30 min noch einmal
+    z.leer = obj(alt.leer); z.planOk = Number.isFinite(alt.planOk) ? alt.planOk : null; z.planAbruf = Number.isFinite(alt.planAbruf) ? alt.planAbruf : null;
+    const stunden = [...new Set([-2, -1, 0, 1].map(k => s4Lokal(now + k * 3600e3).slice(0, 8)))]
+      .filter(h => !Number.isFinite(z.h[h]) && !(z.leer[h] > now - 30 * 60e3));
+    await Promise.all(stunden.map(async h => {
+      try {
+        const l = s4Iris(await holen(`/plan/${S4_DB_EVA}/${h.slice(0, 6)}/${h.slice(6, 8)}`));
+        let n = 0;
+        for (const e of l) if (s4DbOst(e.dp) && /^\d{10}$/.test(e.dp.pt || "")) { z.plan[e.id] = e.dp.pt; n++; }
+        z.planAbruf = now;   // Abruf gelungen (auch leer – etwa bei einer Vollsperrung)
+        if (n) { z.h[h] = now; delete z.leer[h]; z.planOk = now; } else z.leer[h] = now;
+      } catch (e) { z.fehler = now; console.log("DB-Fahrplan nicht geholt (" + e.message + ")"); }
+    }));
+    // Aufräumen: Fahrten mit Planzeit vor mehr als 5 h, Stunden nach 6 h (höchstens 500 Fahrten)
+    const alt5 = s4Lokal(now - 5 * 3600e3);
+    for (const [id, pt] of Object.entries(z.plan)) if (typeof pt !== "string" || pt < alt5) delete z.plan[id];
+    for (const o of [z.h, z.leer]) for (const [h, t] of Object.entries(o)) if (!Number.isFinite(t) || t < now - 6 * 3600e3) delete o[h];
+    z.plan = Object.fromEntries(Object.entries(z.plan).sort((a, b) => (a[1] < b[1] ? 1 : -1)).slice(0, 500));
+    let karte = null;
+    try {
+      const l = s4Iris(await holen(`/fchg/${S4_DB_EVA}`));
+      // Planzeit je Fahrt: aus dem Fahrplan, sonst (Zusatz- oder geänderte Fahrt) aus der Änderung selbst
+      const ptVon = e => z.plan[e.id] ?? (s4DbOst(e.dp) && /^\d{10}$/.test(e.dp.pt || "") ? e.dp.pt : null);
+      // Planzeiten, die zwei Fahrten tragen (Ersatz- und Zusatzfahrt zur selben Minute, Zeitumstellung im Herbst): nicht
+      // zuzuordnen – welche die MVG meint, ist unklar
+      const zuPt = {}, doppelt = new Set();
+      for (const [id, pt] of [...Object.entries(z.plan), ...l.filter(e => !(e.id in z.plan)).map(e => [e.id, ptVon(e)]).filter(x => x[1])]) {
+        if (zuPt[pt] && zuPt[pt] !== id) doppelt.add(pt); zuPt[pt] = id; }
+      // (neutral eingetragen: Eine Fahrt, die die DB vorher gefüllt hat, gilt dann wieder nur nach der MVG)
+      karte = Object.fromEntries([...doppelt].map(pt => [pt, { d: null, aus: false, kurz: false, g: [], zwei: 1 }]));
+      for (const e of l) {
+        try {
+          const dp = e.dp, pt = ptVon(e);
+          if (!pt || doppelt.has(pt) || (dp.l && !/^S\s*4$/i.test(dp.l))) continue;
+          const p = s4VonLokal(pt, now);
+          if (!Number.isFinite(p)) continue;
+          const ct = /^\d{10}$/.test(dp.ct || "") ? dp.ct : null, c = ct ? s4VonLokal(ct, p) : NaN, aus = dp.cs === "c";
+          const d = Number.isFinite(c) && c - p >= -10 * 60e3 && c - p <= 6 * 3600e3 ? Math.max(0, c - p) : null;
+          // nichts Verwertbares (etwa nur Nachrichten); mit Status (cs, etwa Streichung aufgehoben) zählt auch „nichts“
+          if (d === null && !aus && !dp.cs) continue;
+          const g = [...new Set(e.m.filter(m => m.t === "d" && Object.hasOwn(S4_DB_GRUND, m.c)).map(m => S4_DB_GRUND[m.c]))].slice(0, 4);
+          // geänderter Laufweg ohne Marienplatz: endet vorher
+          karte[pt] = { d, ...(d !== null ? { ct } : {}), aus, kurz: typeof dp.cpth === "string" && !/Marienplatz/i.test(dp.cpth), g };
+        } catch { /* eine kaputte Fahrt verdirbt nicht die übrigen */ }
+      }
+      z.ok = now;
+    } catch (e) { z.fehler = now; console.log("DB-Echtzeit nicht geholt (" + e.message + ")"); }
+    await this.s.put("s4db", z);
+    return karte;
+  }
   // Summen für 7 Tage, 30 Tage und alles; je Zeitraum die zehn häufigsten Ursachen (Gründe von Verspätungen und Ausfällen).
   // v: Aufteilung der Fahrten – nur die Fahrten, die schon mit „mit Grund“ gezählt wurden; vAb: erster Tag damit im Zeitraum
   // h: Hochrechnung der Fahrten ohne Echtzeit – sie sind gefahren, nur ihre Verspätung ist unbekannt: Jede bekommt die
@@ -500,7 +672,7 @@ export class DatenState {
   async s4Lesen(now) {
     const s = (await this.s.get("s4")) || { seit: null, tage: {} };
     const hilfe = (await this.s.get("s4hilfe")) || {};
-    const VK = ["n", "aus", "ausSp", "ausVw", "ausFe", "bau", "zus", "og", "ogMin", "mg", "mgMin", "oe"], HK = ["ausSp", "og", "ogMin", "mg", "mgMin"];
+    const VK = ["n", "aus", "ausSp", "ausVw", "ausFe", "bau", "zus", "og", "ogMin", "mg", "mgMin", "oe", "db"], HK = ["ausSp", "og", "ogMin", "mg", "mgMin"];
     const zahl = x => { x = +x; return Number.isFinite(x) && x > 0 ? x : 0; };
     const vVon = t => (t.v && typeof t.v === "object" ? t.v : null);
     const woche = tag => { const d = new Date(tag + "T12:00:00Z"); return Number.isFinite(d.getTime()) ? new Date(d.getTime() - ((d.getUTCDay() + 6) % 7) * 864e5).toISOString().slice(0, 10) : "?"; };
@@ -520,7 +692,7 @@ export class DatenState {
     const artVon = r => (typeof r.art === "string" ? r.art : r.a === 1 ? "g" : r.rt === 1 && Number.isFinite(r.n) && Number.isFinite(r.t) && r.t >= r.n ? "s" : "");
     for (const [k, l] of fWerte) for (const r of Array.isArray(l) ? l : []) { const art = r ? artVon(r) : "";
       if (["g", "s", "v", "f"].includes(art) && Number.isFinite(r.p))
-        ausfaelle.push({ tag: k.slice(4), p: r.p, t: Number.isFinite(r.t) ? r.t : r.p, v: zahl(r.v), art, z: typeof r.z === "string" ? r.z : "", n: Number.isFinite(r.n) ? r.n : null, g: Array.isArray(r.g) && typeof r.g[0] === "string" ? r.g[0] : "" }); }
+        ausfaelle.push({ tag: k.slice(4), p: r.p, t: Number.isFinite(r.t) ? r.t : r.p, v: zahl(r.v), art, z: typeof r.z === "string" ? r.z : "", n: Number.isFinite(r.n) ? r.n : null, g: Array.isArray(r.g) && typeof r.g[0] === "string" ? r.g[0] : "", ...(r.q === "db" ? { q: "db" } : {}) }); }
     ausfaelle.sort((a, b) => b.p - a.p);
     const summe = ab => {
       const z = { n: 0, kurz: 0 }, v = Object.fromEntries(VK.map(k => [k, 0])), h = { n: 0, aus: 0, ...Object.fromEntries(HK.map(k => [k, 0])) }, g = {};
@@ -554,8 +726,13 @@ export class DatenState {
       .map(([ab, w]) => { const b = gefahren(w), sp = w.og + w.mg;
         return w.oe > 0 && b > 0 ? { ab, n: w.n, mit: w.n, sp: r3(sp * (1 + w.oe / b)), aus: r3(w.aus + w.ausSp * w.oe / b) }
           : { ab, n: w.n, mit: Math.max(0, w.n - w.oe), sp, aus: w.aus }; });
-    const so = hilfe.soll;
+    const so = hilfe.soll, db = (await this.s.get("s4db")) || {};
     return { seit, stand: s.ok || null, z: { "7": summe(vorTagen(6)), "30": summe(vorTagen(29)), alle: summe(null) }, wochen: verlauf,
+      // Reserve-Echtzeit der DB: letzter gelungener Abruf der Änderungen, letzter gescheiterter Abruf
+      // (plan: zuletzt ein Fahrplan der DB mit S4 Richtung Innenstadt – ohne ihn lässt sich keine Fahrt zuordnen; abruf:
+      // zuletzt ein Fahrplan überhaupt geholt, auch ein leerer)
+      db: { ok: Number.isFinite(db.ok) ? db.ok : null, fehler: Number.isFinite(db.fehler) ? db.fehler : null, plan: Number.isFinite(db.planOk) ? db.planOk : null,
+        abruf: Number.isFinite(db.planAbruf) ? db.planAbruf : null },
       // heute: der Zähler hat den Soll-Fahrplan für heute (sonst gleicht er gerade nicht ab); geholt: letzter erfolgreicher Abruf
       soll: so ? { version: so.version, quelle: so.quelle, bis: so.bis, geholt: Number.isFinite(so.geholt) ? so.geholt : null, heute: Array.isArray(so.tage?.[s4Tag(now)]) } : null };
   }
