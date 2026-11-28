@@ -177,13 +177,17 @@ def db_pruefen(t, seite, dienste, herkunft, jetzt):
     jung = lambda x, h: isinstance(x, (int, float)) and jetzt.timestamp() * 1000 - x < h * 3600e3
     echt = jung(db.get("ok"), 2) if isinstance(db, dict) else False
     # ohne den Fahrplan der DB (S4 Richtung Innenstadt) lässt sich keine Fahrt zuordnen; nachts ist er leer, daher großzügig.
-    # Fährt laut Soll heute gar keine S4 (Vollsperrung), genügt ein gelungener (leerer) Abruf.
+    # Fährt laut Soll in den letzten 23 h und der nächsten halben Stunde keine S4 (Vollsperrung), genügt ein gelungener
+    # (leerer) Abruf – in diesem Fenster hätte der Zähler sonst einen Fahrplan mit S4 geholt.
     plan = jung(db.get("plan"), 26) if isinstance(db, dict) else False
     if not plan and isinstance(db, dict) and jung(db.get("abruf"), 3):
         c3, _, d3 = holen(seite + "data/s4-soll.json")
         tage = (json_von(d3) or {}).get("tage") if c3 == 200 else None
-        heute = jetzt.astimezone(ZoneInfo("Europe/Berlin")).date().isoformat()
-        plan = isinstance(tage, dict) and not tage.get(heute)
+        heute = jetzt.astimezone(ZoneInfo("Europe/Berlin")).date()
+        s = jetzt.timestamp()
+        soll = [x[0] * 60 for d in (heute - timedelta(days=1), heute) for x in ((tage or {}).get(d.isoformat()) or [])
+                if isinstance(x, list) and x and isinstance(x[0], (int, float))] if isinstance(tage, dict) else []
+        plan = isinstance(tage, dict) and not any(s - 23 * 3600 <= z <= s + 1800 for z in soll)
     t.p("dbecht", echt and plan, "Echtzeit der DB (Reserve des S4-Zählers) erreichbar" if echt and plan
         else "S4-Zähler bekommt keine Echtzeit der DB (Reserve) mehr" if not echt else "S4-Zähler bekommt den Fahrplan der DB (Reserve) nicht mehr")
 

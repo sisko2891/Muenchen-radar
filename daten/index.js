@@ -347,7 +347,10 @@ export class DatenState {
     if (!Array.isArray(liste)) return { ok: false };
     const mvgVon = a => (a && a.m && typeof a.m === "object" ? a.m
       : a && a.q !== "db" ? { a: !!a.aus, k: !!a.kurz, g: Array.isArray(a.g) ? a.g : [] } : { a: false, k: false, g: [] });   // ältere Einträge ohne m
-    const dbFrisch = f => !!f && f.q === "db" && !!f.d && f.d.z >= now - 10 * 60e3;   // die DB hat die Fahrt eben noch bestätigt
+    // die DB hat die Fahrt eben noch bestätigt; ab zwei Minuten nach der Planzeit gilt der dann festgehaltene Stand (dbFest),
+    // damit eine später schweigende DB eine schon getroffene Einordnung („zu spät“ der Fahrt davor) nicht mehr umwirft
+    const dbJetzt = f => !!f && f.q === "db" && !!f.d && f.d.z >= now - 10 * 60e3;
+    const dbFrisch = f => (f && typeof f.dbFest === "boolean" ? f.dbFest : dbJetzt(f));
     const dbSetzen = (f, p) => {
       const m = f.m && typeof f.m === "object" ? f.m : (f.m = mvgVon(f));
       const e = db && typeof db === "object" ? db[s4Lokal(p)] : null;
@@ -431,8 +434,10 @@ export class DatenState {
     // Verschwunden: Die MVG zeigt eine Fahrt nicht mehr, obwohl sie noch bevorsteht und spätere Fahrten angezeigt werden
     // (die Liste reicht also über sie hinaus). Erst nach zwei solchen Läufen gilt sie als verschwunden (Aussetzer abfangen).
     const spaeteste = Math.max(-Infinity, ...[...gelistet].map(Number));
+    // „fehlt“ bleibt reine Beobachtung der MVG; ob die DB die Fahrt kennt, entscheidet erst die Wertung (dbFrisch)
     for (const [p, f] of Object.entries(s.offen)) {
-      if (gelistet.has(p) || f.aus || dbFrisch(f)) continue;   // die DB kennt ihre Abfahrt (eben bestätigt): nicht verschwunden
+      if (f && typeof f.dbFest !== "boolean" && +p <= now - 120e3) f.dbFest = dbJetzt(f);
+      if (gelistet.has(p) || (f.m && typeof f.m === "object" ? f.m.a : f.aus)) continue;   // nur eine Streichung der MVG selbst
       if (+p > now + 2 * 60e3 && f.t > now + 2 * 60e3 && spaeteste > +p) f.fehlt = (f.fehlt || 0) + 1;
     }
     // Abfahrten laut Fahrplan aller bekannten, nicht gestrichenen Fahrten (noch offen oder in den letzten 6 h gezählt) – für
@@ -460,6 +465,8 @@ export class DatenState {
       // ohne Echtzeit, aber noch angezeigt: warten (höchstens 90 min nach Fahrplan) – vielleicht kommt die Echtzeit noch
       if (f.rt === false && gelistet.has(p) && now - +p < 90 * 60e3) continue;
       delete s.offen[p]; s.fertig[p] = now; if (f.aus || vw) s.fertigAus[p] = now;
+      // verschwunden trotz (veralteter) DB-Angaben: nur die eigenen Angaben der MVG festhalten, wie ohne DB
+      if (vw && f.q === "db") { const m = f.m && typeof f.m === "object" ? f.m : {}; f.rt = false; delete f.q; f.t = +p; f.v = 0; f.aus = !!m.a; f.kurz = !!m.k; f.g = Array.isArray(m.g) ? m.g.slice(0, 4) : []; }
       const n = naechste(+p), spaet = !f.aus && !vw && f.rt !== false && n !== null && f.t >= n;
       const gr = Array.isArray(f.g) ? f.g : [];
       // angekündigte Bauarbeiten: gestrichen mit Bau-Grund, oder verschwunden während einer befristeten S4-Baustelle
