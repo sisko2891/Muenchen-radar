@@ -185,7 +185,8 @@ def db_pruefen(t, seite, dienste, herkunft, jetzt):
         tage = (json_von(d3) or {}).get("tage") if c3 == 200 else None
         heute = jetzt.astimezone(ZoneInfo("Europe/Berlin")).date()
         s = jetzt.timestamp()
-        soll = [x[0] * 60 for d in (heute - timedelta(days=1), heute) for x in ((tage or {}).get(d.isoformat()) or [])
+        tag = lambda d: (lambda v: v if isinstance(v, list) else [])(tage.get(d.isoformat()))
+        soll = [x[0] * 60 for d in (heute - timedelta(days=1), heute, heute + timedelta(days=1)) for x in tag(d)
                 if isinstance(x, list) and x and isinstance(x[0], (int, float))] if isinstance(tage, dict) else []
         plan = isinstance(tage, dict) and not any(s - 23 * 3600 <= z <= s + 1800 for z in soll)
     t.p("dbecht", echt and plan, "Echtzeit der DB (Reserve des S4-Zählers) erreichbar" if echt and plan
