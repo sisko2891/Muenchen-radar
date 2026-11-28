@@ -740,6 +740,9 @@ export class DatenState {
       // zuletzt ein Fahrplan überhaupt geholt, auch ein leerer)
       db: { ok: Number.isFinite(db.ok) ? db.ok : null, fehler: Number.isFinite(db.fehler) ? db.fehler : null, plan: Number.isFinite(db.planOk) ? db.planOk : null,
         abruf: Number.isFinite(db.planAbruf) ? db.planAbruf : null },
+      // Lücken des Zählers (letzte 14 Tage, [von, bis]): über 12 min ohne Lauf oder ohne S4 Richtung Innenstadt bei der MVG –
+      // auch die nächtliche Betriebspause; erst der Abgleich mit dem Soll zeigt echte Ausfälle der MVG
+      luecken: (Array.isArray(s.luecken) ? s.luecken : []).filter(l => Array.isArray(l) && Number.isFinite(l[0]) && Number.isFinite(l[1])).slice(-60).map(l => [l[0], l[1]]),
       // heute: der Zähler hat den Soll-Fahrplan für heute (sonst gleicht er gerade nicht ab); geholt: letzter erfolgreicher Abruf
       soll: so ? { version: so.version, quelle: so.quelle, bis: so.bis, geholt: Number.isFinite(so.geholt) ? so.geholt : null, heute: Array.isArray(so.tage?.[s4Tag(now)]) } : null };
   }
